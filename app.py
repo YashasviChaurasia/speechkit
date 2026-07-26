@@ -66,9 +66,9 @@ def provider_error(error: ProviderError) -> PublicError:
 
 settings = Settings.from_env()
 store = Storage(settings.data_dir / "speechlens.sqlite")
-provider = FixtureProvider() if settings.fixture_mode else SarvamProvider(settings.api_key or "", poll_interval=settings.poll_interval, batch_timeout=settings.batch_timeout)
-service = SpeechService(store, provider, settings.data_dir, settings.ffmpeg, settings.ffprobe, settings.fixture_mode)
 credentials = CredentialStore()
+fixture_provider = FixtureProvider() if settings.fixture_mode else None
+service = SpeechService(store, fixture_provider, settings.data_dir, settings.ffmpeg, settings.ffprobe, settings.fixture_mode)
 app = FastAPI(title="SpeechLens", version="0.1.0")
 
 
@@ -152,7 +152,16 @@ async def upload(file: UploadFile = File(...), num_speakers: int | None = Form(N
                 tmp.write(chunk)
         if size == 0:
             raise PublicError(400, "invalid_upload", "Upload is empty. Choose an audio or video file with spoken audio.")
-        return {"asset_id": service.process(filename, path, num_speakers, mode), "stage": "complete"}
+        active_provider = None
+        if not settings.fixture_mode:
+            try:
+                api_key = credentials.get()
+            except CredentialStoreError:
+                raise PublicError(500, "credential_store_unavailable", "SpeechKit could not access the operating-system credential store.")
+            if not api_key:
+                raise PublicError(409, "sarvam_not_configured", "Sarvam is not configured. Save an API key before analysing.")
+            active_provider = SarvamProvider(api_key, poll_interval=settings.poll_interval, batch_timeout=settings.batch_timeout)
+        return {"asset_id": service.process(filename, path, num_speakers, mode, active_provider), "stage": "complete"}
     except PublicError:
         raise
     except NoSpeechError:

@@ -35,6 +35,7 @@ def test_upload_returns_actionable_sarvam_response_error(monkeypatch, tmp_path):
         raise ProviderError("Sarvam downloaded invalid JSON transcript data.")
 
     monkeypatch.setattr(application.service, "process", malformed_response)
+    monkeypatch.setattr(application.credentials, "get", lambda: "test-key")
     response = TestClient(application.app).post("/api/assets", files={"file": ("recording.wav", b"RIFF", "audio/wav")})
     assert response.status_code == 502
     assert response.json()["error"] == {"code": "provider_response_invalid", "message": "Sarvam returned unusable transcription data. Retry the recording later.", "retryable": True, "details": {}}

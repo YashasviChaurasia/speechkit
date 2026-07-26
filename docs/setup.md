@@ -4,7 +4,7 @@
 
 - Python 3.11 or newer
 - FFmpeg and ffprobe available on your `PATH`
-- A Sarvam API key with Batch STT credits for live transcription
+- A Sarvam API key with Batch STT credits for live transcription, stored through the provider configuration contract
 
 ## Install
 
@@ -13,10 +13,9 @@ cd speechlens
 cp .env.example .env
 ```
 
-Edit `.env` and set only your local values:
+Edit `.env` and set only non-secret runtime values:
 
 ```bash
-SARVAM_API_KEY=your_key_here
 SPEECHKIT_DATA_DIR=./data
 SPEECHKIT_FIXTURE_MODE=0
 ```
@@ -36,6 +35,8 @@ set -a; source .env; set +a
 ```
 
 Open `http://127.0.0.1:8000` in a browser on the same machine. This binds only to localhost; do not expose the application publicly without adding access control because uploads consume Sarvam credits.
+
+SpeechKit does not read `SARVAM_API_KEY` from `.env`. Its OffCam backend proxy configures the operating-system credential store through `GET`, `PUT`, and `DELETE /api/provider/config`. The standalone browser UI has no key form. A live upload with no stored key returns the safe `sarvam_not_configured` error.
 
 ## Run without Sarvam credentials
 

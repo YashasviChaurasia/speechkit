@@ -159,6 +159,6 @@ Keep generated data out of Git. `.env`, local `data/`, recordings, extracted WAV
 
 ## OffCam boundary
 
-The current service is a standalone multipart-upload tool. It does not know an OffCam `project_id`, accept opaque OffCam asset references, or resolve private source media. An OffCam bridge should keep `SARVAM_API_KEY` server-side, map `(project_id, asset_id)` to a SpeechKit asset, and consume only the public API or `speechkit.v1` artifact.
+The current service is a standalone multipart-upload tool. It does not know an OffCam `project_id`, accept opaque OffCam asset references, or resolve private source media. SpeechKit owns the Sarvam key in the operating-system credential store; an OffCam bridge should proxy only configured/not-configured state and key save/replace/remove operations server-to-server, map `(project_id, asset_id)` to a SpeechKit asset, and consume only the public API or `speechkit.v1` artifact.
 
 The isolated right-drawer integration contract and its remaining limitations are documented in [offcam-plugin-contract.md](offcam-plugin-contract.md).

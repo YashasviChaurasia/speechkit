@@ -72,7 +72,7 @@ Expected output:
 
 ## Live Sarvam setup
 
-Live mode requires a Sarvam Batch STT API key and a working FFmpeg installation. Never commit the key, recordings, extracted audio, SQLite database, or downloaded provider output.
+Live mode requires a Sarvam Batch STT API key and a working FFmpeg installation. SpeechKit owns the key and stores it in the operating-system credential store through its provider configuration contract. It does not read a key from `.env`, SQLite, JSON, or browser storage. Never commit recordings, extracted audio, SQLite database, or downloaded provider output.
 
 ### 1. Configure local environment variables
 
@@ -80,10 +80,9 @@ Live mode requires a Sarvam Batch STT API key and a working FFmpeg installation.
 cp .env.example .env
 ```
 
-Set local values in `.env`:
+Set local runtime values in `.env`:
 
 ```bash
-SARVAM_API_KEY=your_sarvam_key
 SPEECHKIT_DATA_DIR=./data
 SPEECHKIT_FIXTURE_MODE=0
 ```
@@ -95,7 +94,7 @@ set -a; source .env; set +a
 .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-The service binds to localhost in these examples. Do not expose it publicly without authentication, upload controls, and an operational data-retention policy: live uploads use Sarvam credits and source media is retained locally.
+The service binds to localhost in these examples. Configure a key through the OffCam server-side proxy using `GET`, `PUT`, and `DELETE /api/provider/config`; responses return only `{"provider":"sarvam","configured":true|false}`. The standalone UI intentionally has no key form. Do not expose the configuration endpoints publicly: live uploads use Sarvam credits and source media is retained locally.
 
 ### 2. Use the browser demo
 
@@ -135,7 +134,7 @@ GET    /api/assets/{asset_id}/search?q=&mode=
 PATCH  /api/assets/{asset_id}/speakers/{speaker_id}
 ```
 
-All public failures use the same safe envelope. It does not contain API keys, provider headers, tracebacks, absolute local paths, signed URLs, or raw provider exceptions.
+All public failures use the same safe envelope. It does not contain API keys, provider headers, tracebacks, absolute local paths, signed URLs, or raw provider exceptions. A live upload without a stored key returns `sarvam_not_configured`; a rejected stored key returns `sarvam_authentication`.
 
 ```json
 {

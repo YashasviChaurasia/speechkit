@@ -32,6 +32,14 @@ def fixture_app(monkeypatch, tmp_path):
     return importlib.import_module("app")
 
 
+def live_app(monkeypatch, tmp_path):
+    monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+    monkeypatch.setenv("SPEECHKIT_FIXTURE_MODE", "0")
+    monkeypatch.setenv("SPEECHKIT_DATA_DIR", str(tmp_path))
+    sys.modules.pop("app", None)
+    return importlib.import_module("app")
+
+
 def test_provider_config_never_returns_the_submitted_key(monkeypatch, tmp_path):
     application = fixture_app(monkeypatch, tmp_path)
     fake = FakeCredentials()
@@ -43,6 +51,16 @@ def test_provider_config_never_returns_the_submitted_key(monkeypatch, tmp_path):
     assert response.json() == {"provider": "sarvam", "configured": True}
     assert "secret-value" not in response.text
     assert client.delete("/api/provider/config").json() == {"provider": "sarvam", "configured": False}
+
+
+def test_live_upload_requires_a_stored_sarvam_key(monkeypatch, tmp_path):
+    application = live_app(monkeypatch, tmp_path)
+    monkeypatch.setattr(application, "credentials", FakeCredentials())
+
+    response = TestClient(application.app).post("/api/assets", files={"file": ("recording.wav", b"audio", "audio/wav")})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "sarvam_not_configured"
 
 
 def test_fixture_mode_starts_without_a_sarvam_key_and_has_typed_health(monkeypatch, tmp_path):

@@ -32,13 +32,12 @@ The exact import path is `app:app`. Uvicorn defaults are host `127.0.0.1` and po
 
 | Variable | Required | Default / use |
 | --- | --- | --- |
-| `SARVAM_API_KEY` | required for live Sarvam mode | no default; not syntax or network validated at startup |
 | `SPEECHKIT_DATA_DIR` | optional | `./data`, resolved to an absolute path |
 | `SPEECHKIT_FIXTURE_MODE` | optional | `1` enables deterministic synthetic Batch output without a Sarvam key or network call |
 | `SARVAM_RUN_INTEGRATION_TESTS` | test-only optional | integration test skips unless `1` |
 | `SPEECHKIT_INTEGRATION_AUDIO` | test-only optional | integration test skips unless set |
 
-A **valid** Sarvam key is not required merely to start the service in live mode: any non-empty value lets it serve existing local data. A valid key is required to submit real analysis. With `SPEECHKIT_FIXTURE_MODE=1`, no key is required and uploads use only a committed synthetic fixture; this is the supported OffCam contract-test mode.
+Live startup requires no environment API key. SpeechKit reads the Sarvam API key from the operating-system credential store at the start of a live upload. With `SPEECHKIT_FIXTURE_MODE=1`, no key is required and uploads use only a committed synthetic fixture; this is the supported OffCam contract-test mode.
 
 | Endpoint | Status |
 | --- | --- |
@@ -46,6 +45,18 @@ A **valid** Sarvam key is not required merely to start the service in live mode:
 | Root standalone UI | `GET /` (static HTML), verified `200`; not a health endpoint |
 | OpenAPI | `GET /openapi.json`, verified `200` |
 | Swagger UI | `GET /docs`, verified `200` |
+
+### Provider credential configuration
+
+**Implemented and verified:** SpeechKit owns a single global Sarvam credential in the operating-system credential store (`keyring` service `speechkit`, account `sarvam`). It does not read or persist the key in `.env`, SQLite, JSON, localStorage, artifact metadata, logs, public errors, responses, test fixtures, or project data.
+
+| Method | Path | Request | Success response |
+| --- | --- | --- | --- |
+| `GET` | `/api/provider/config` | none | `{"provider":"sarvam","configured":true|false}` |
+| `PUT` | `/api/provider/config` | JSON `{"api_key":"<non-blank string>"}` | `{"provider":"sarvam","configured":true}` |
+| `DELETE` | `/api/provider/config` | none | `{"provider":"sarvam","configured":false}` |
+
+The key is accepted only by `PUT` and is never returned. A credential-store access failure returns `500 credential_store_unavailable` using the public error envelope. For this approved demo the endpoints have no application authentication; they must remain localhost/internal-only or be reached only through an OffCam server-side proxy before production. OffCam must keep the key out of browser state beyond the active password form, display only **Configured** or **Not configured**, disable Analyse when `configured` is false, state that analysis uses real Sarvam credits, and treat explicit Analyse as the spending authorization.
 
 ## 2. Analysis request and ingestion
 
@@ -63,7 +74,7 @@ A **valid** Sarvam key is not required merely to start the service in live mode:
 | Body `mode` | optional string form part; `transcribe` (default), `translate`, `verbatim`, `translit`, or `codemix` |
 | Success | `200`, only after all synchronous processing completes |
 | Success body | `{"asset_id":"<32-char UUID hex>","stage":"complete"}` |
-| Validation | FastAPI `422` for missing/invalid form fields; `400` empty filename/file; `413` over size; `415` unsupported suffix |
+| Validation | FastAPI `422` for missing/invalid form fields; `400` empty filename/file; `413` over size; `415` unsupported suffix; live `409 sarvam_not_configured` when no keychain key exists |
 
 Accepted filename suffixes are `.aac`, `.avi`, `.flac`, `.m4a`, `.mkv`, `.mov`, `.mp3`, `.mp4`, `.mpeg`, `.mpg`, `.ogg`, `.opus`, `.wav`, and `.webm`. Filename suffix validation is followed by `ffprobe`; a deceptive or malformed file is rejected if it is unreadable, has no audio stream, or has no finite positive duration.
 
@@ -268,6 +279,8 @@ All handled public errors use one stable envelope. `details` is currently always
 | FFmpeg extraction failure | 422 `ffmpeg_failed` | false |
 | malformed media | 422 `invalid_media` | false |
 | no usable diarised speech | 422 `no_speech` | false |
+| no stored Sarvam key | 409 `sarvam_not_configured` | false |
+| OS credential store unavailable | 500 `credential_store_unavailable` | false |
 | Sarvam authentication | 502 `sarvam_authentication` | false |
 | Sarvam rate limiting | 503 `sarvam_rate_limited` | true |
 | Sarvam timeout | 504 `provider_timeout` | true |
@@ -319,7 +332,7 @@ From repository root:
 .venv/bin/python -m pytest -q
 ```
 
-Latest audit result: **46 passed, 1 skipped, 0 failed**. Default tests require no Sarvam key, make no network or paid Sarvam calls, do not require FFmpeg, and use temporary SQLite databases where storage is exercised.
+Latest audit result: **53 passed, 1 skipped, 0 failed**. Default tests require no Sarvam key, make no network or paid Sarvam calls, do not require FFmpeg, and use temporary SQLite databases where storage is exercised.
 
 The formal fixture-backed service mode is implemented and tested. It uses committed synthetic output from `src/speechkit/fixtures/offcam_batch_output.json`; it makes no network request and needs no Sarvam key.
 
@@ -350,12 +363,12 @@ The marker is `integration`; it skips by default. It asserts only non-empty `job
 | README says storage persists jobs | `jobs` table is created but no code persists or reads a job |
 | README calls raw timing "timestamp chunks" | normaliser preserves any `timestamps` shape; the committed observed fixture uses `timestamps.words`, not chunks |
 | README says the integration marker is reserved/absent until fixture/key is supplied | `tests/test_integration.py` is present and uses environment-gated real audio/key inputs |
-| README says a Sarvam key is required to run | import only requires a non-empty string; a valid key is required only for real analysis |
+| Earlier README revisions said `SARVAM_API_KEY` was required at startup | current live startup uses no environment key; a keychain credential is required only to submit a live analysis |
 | README states price/billing semantics | no pricing or billing behavior is validated by executable code/tests |
 
 ## 11. Generated OpenAPI
 
-`docs/offcam-plugin-openapi.json` was fetched from the running service's `GET /openapi.json`; it was not hand-authored. It accurately exposes eight routes, including typed `/health`, and request validation for file upload, speaker count, search mode, and rename body. It is incomplete for OffCam client generation because most route responses are untyped dictionaries, `FileResponse` lacks a media response schema, and no response models declare the shared error envelope or artifact/status/search structures.
+`docs/offcam-plugin-openapi.json` was fetched from the running service's `GET /openapi.json`; it was not hand-authored. It exposes eleven operations across nine paths, including typed `/health` and provider credential configuration, plus request validation for file upload, speaker count, search mode, and rename body. It is incomplete for OffCam client generation because most route responses are untyped dictionaries, `FileResponse` lacks a media response schema, and no response models declare the shared error envelope or artifact/status/search structures.
 
 ## 12. Readiness verdict
 
@@ -363,6 +376,7 @@ The marker is `integration`; it skips by default. It asserts only non-empty `job
 | --- | ---: | ---: | ---: | ---: |
 | Service startup | ✓ |  |  |  |
 | Health endpoint | ✓ |  |  |  |
+| Credential configuration | ✓ |  |  |  |
 | Media ingestion | ✓ |  |  | ✓ |
 | Analysis lifecycle |  | ✓ |  | ✓ |
 | Artifact schema |  | ✓ |  | ✓ |

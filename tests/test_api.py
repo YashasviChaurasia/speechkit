@@ -30,11 +30,12 @@ def test_upload_passes_documented_sarvam_mode_to_processing(monkeypatch, tmp_pat
     app = importlib.import_module("app")
     captured = {}
 
-    def process(_filename, _path, _speakers, mode):
+    def process(_filename, _path, _speakers, mode, _provider):
         captured["mode"] = mode
         return "asset"
 
     monkeypatch.setattr(app.service, "process", process)
+    monkeypatch.setattr(app.credentials, "get", lambda: "test-key")
     response = TestClient(app.app).post("/api/assets", data={"mode": "translit"}, files={"file": ("recording.wav", b"RIFF", "audio/wav")})
     assert response.status_code == 200
     assert captured["mode"] == "translit"
