@@ -28,6 +28,7 @@ def normalize_batch_output(*, asset_id: str, filename: str, duration_seconds: fl
             "sarvam_job_id": job_id, "sarvam_request_id": output.get("request_id"),
             "language_probability": output.get("language_probability"),
             "sarvam_timestamps": output.get("timestamps"), "file_failures": file_failures or [],
+            "sarvam_response_metadata": {key: output[key] for key in ("audio_mime",) if key in output},
             "estimated_cost_inr": estimated_cost_inr,
         },
     )

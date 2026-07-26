@@ -1,0 +1,19 @@
+{
+  "audio_hash": "sanitized",
+  "audio_mime": "audio/wav",
+  "request_id": "request-sanitized",
+  "transcript": "Sanitized first turn. Sanitized second turn.",
+  "language_code": "en-IN",
+  "language_probability": 0.99,
+  "timestamps": {
+    "words": ["first", "second"],
+    "start_time_seconds": [3.53, 8.19],
+    "end_time_seconds": [6.45, 9.41]
+  },
+  "diarized_transcript": {
+    "entries": [
+      {"transcript": "Sanitized first turn.", "start_time_seconds": 3.53, "end_time_seconds": 6.45, "speaker_id": "0"},
+      {"transcript": "Sanitized second turn.", "start_time_seconds": 8.19, "end_time_seconds": 9.41, "speaker_id": "3"}
+    ]
+  }
+}

@@ -1,4 +1,6 @@
 from speechkit.normalize import normalize_batch_output
+import json
+from pathlib import Path
 
 
 def test_normalizes_diarized_turns_and_preserves_raw_chunks():
@@ -41,3 +43,14 @@ def test_handles_missing_optional_fields_and_empty_diarization():
     )
     assert artifact.language_code is None
     assert artifact.segments == []
+
+
+def test_normalizes_observed_sarvam_word_timestamp_shape():
+    output = json.loads((Path(__file__).parent / "fixtures" / "sarvam_batch_observed_sanitized.json").read_text())
+    artifact = normalize_batch_output(
+        asset_id="observed", filename="recording.mp4", duration_seconds=161.587664,
+        output=output, job_id="job-sanitized", estimated_cost_inr=2.02,
+    )
+    assert [segment.speaker_id for segment in artifact.segments] == ["speaker_0", "speaker_3"]
+    assert artifact.metadata["sarvam_timestamps"]["words"] == ["first", "second"]
+    assert artifact.metadata["sarvam_response_metadata"] == {"audio_mime": "audio/wav"}
