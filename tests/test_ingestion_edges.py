@@ -37,7 +37,7 @@ def test_upload_returns_actionable_sarvam_response_error(monkeypatch, tmp_path):
     monkeypatch.setattr(application.service, "process", malformed_response)
     response = TestClient(application.app).post("/api/assets", files={"file": ("recording.wav", b"RIFF", "audio/wav")})
     assert response.status_code == 502
-    assert response.json()["detail"] == "Sarvam returned an unreadable transcript response. The recording was marked failed; retry in a few minutes."
+    assert response.json()["error"] == {"code": "provider_response_invalid", "message": "Sarvam returned unusable transcription data. Retry the recording later.", "retryable": True, "details": {}}
 
 
 def test_upload_rejects_invalid_expected_speaker_count(monkeypatch, tmp_path):

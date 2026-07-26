@@ -24,7 +24,8 @@ class SarvamProvider:
         for attempt in range(5):
             try: return call()
             except Exception as error:
-                if not self._retryable(error) or attempt == 4: raise ProviderError(f"Sarvam request failed: {error}") from error
+                if not self._retryable(error) or attempt == 4:
+                    raise ProviderError("Sarvam request failed.", getattr(error, "status_code", None)) from error
                 self.sleep(min(1 * 2 ** attempt, 30) + self.random_value())
 
     def _create_job(self, **kwargs):
@@ -42,7 +43,7 @@ class SarvamProvider:
             status = job.wait_until_complete(poll_interval=self.poll_interval, timeout=self.batch_timeout)
             files = job.get_file_results()
         except Exception as error:
-            raise ProviderError("Sarvam batch job could not be completed.") from error
+            raise ProviderError("Sarvam batch job could not be completed.", getattr(error, "status_code", None)) from error
         if not isinstance(files, dict):
             raise ProviderError("Sarvam returned invalid file results.")
         successful, failed = files.get("successful", []), files.get("failed", [])

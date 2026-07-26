@@ -32,16 +32,17 @@ The exact import path is `app:app`. Uvicorn defaults are host `127.0.0.1` and po
 
 | Variable | Required | Default / use |
 | --- | --- | --- |
-| `SARVAM_API_KEY` | non-empty value required at import/startup | no default; not syntax or network validated at startup |
+| `SARVAM_API_KEY` | required for live Sarvam mode | no default; not syntax or network validated at startup |
 | `SPEECHKIT_DATA_DIR` | optional | `./data`, resolved to an absolute path |
+| `SPEECHKIT_FIXTURE_MODE` | optional | `1` enables deterministic synthetic Batch output without a Sarvam key or network call |
 | `SARVAM_RUN_INTEGRATION_TESTS` | test-only optional | integration test skips unless `1` |
 | `SPEECHKIT_INTEGRATION_AUDIO` | test-only optional | integration test skips unless set |
 
-A **valid** Sarvam key is not required merely to start the service: any non-empty value lets it serve existing local data. A valid key is required to submit real analysis. This differs from the README wording that lists a Sarvam API key as a runtime requirement without distinguishing startup from analysis.
+A **valid** Sarvam key is not required merely to start the service in live mode: any non-empty value lets it serve existing local data. A valid key is required to submit real analysis. With `SPEECHKIT_FIXTURE_MODE=1`, no key is required and uploads use only a committed synthetic fixture; this is the supported OffCam contract-test mode.
 
 | Endpoint | Status |
 | --- | --- |
-| Health endpoint | **not implemented** |
+| Health endpoint | `GET /health`, verified `200`, typed `{"status":"ok","service":"speechkit","version":"0.1.0"}`; no Sarvam request |
 | Root standalone UI | `GET /` (static HTML), verified `200`; not a health endpoint |
 | OpenAPI | `GET /openapi.json`, verified `200` |
 | Swagger UI | `GET /docs`, verified `200` |
@@ -103,7 +104,7 @@ uploaded → extracting_audio → submitting → normalising → complete
 }
 ```
 
-It returns `404 {"detail":"Asset not found"}` only for an unknown ID. `complete` is the sole terminal success state; `failed` is the sole terminal failure state. There is stage-name progress only, no percentage.
+It returns a stable `404` public error envelope with code `asset_not_found` only for an unknown ID. `complete` is the sole terminal success state; `failed` is the sole terminal failure state. There is stage-name progress only, no percentage.
 
 **Polling recommendation constrained by current behavior:** do not poll during the synchronous upload request. After it returns an asset ID, one status/artifact refresh is sufficient. If a future deployment uses multiple workers, poll only while the SpeechKit drawer panel is visible, start at 1 second and back off to 5 seconds, stop at `complete`/`failed`, and resume on panel reopen. This is a client convention, not a present server feature.
 
@@ -125,7 +126,7 @@ The `jobs` SQLite table exists but is never written or read: it is **partially i
 
 ## 4. Exact `speechkit.v1` artifact
 
-**Implemented and verified:** `GET /api/assets/{asset_id}/artifact` returns `application/json`, `200`, only when the stored asset status is `complete`. It has one string path parameter. Unknown and incomplete/failed assets both return `404 {"detail":"Completed artifact not found"}`; callers cannot distinguish those cases from this endpoint.
+**Implemented and verified:** `GET /api/assets/{asset_id}/artifact` returns `application/json`, `200`, only when the stored asset status is `complete`. It has one string path parameter. Unknown and incomplete/failed assets both return `404` with public error code `artifact_not_found`; callers cannot distinguish those cases from this endpoint.
 
 Every successful response constructs these top-level keys:
 
@@ -146,9 +147,9 @@ Each `segments[]` object has these non-null fields: `segment_id` (string), `asse
 
 Each `speakers[]` object has: `speaker_id` and `display_name` (strings); `speaking_seconds`, `speaking_percentage`, `average_turn_seconds`, and `longest_turn_seconds` (numbers; seconds except percentage); `word_count`, `turn_count`, and `questions_asked` (integers); plus `keywords`, `entities`, and `representative_quotes` (string arrays). Quotes are text only: no segment IDs, timestamps, or scores.
 
-Metadata is intentionally untyped and has these current normalisation keys: `sarvam_job_id` (string), `sarvam_request_id` (Sarvam value or null), `language_probability` (Sarvam value or null), `sarvam_timestamps` (raw Sarvam value or null), `file_failures` (array), `sarvam_response_metadata` (currently an `audio_mime` entry only when present), and `estimated_cost_inr` (number). The service adds `language_code`, `sarvam_mode` (the submitted mode), and `media_path`.
+Metadata is intentionally untyped and has these current normalisation keys: `sarvam_job_id` (string), `sarvam_request_id` (Sarvam value or null), `language_probability` (Sarvam value or null), `sarvam_timestamps` (raw Sarvam value or null), `file_failures` (array), `sarvam_response_metadata` (currently an `audio_mime` entry only when present), and `estimated_cost_inr` (number). The service adds `language_code` and `sarvam_mode` (the submitted mode).
 
-`media_path` is an **absolute local filesystem path and is exported in the artifact**. This violates the eventual browser-facing OffCam asset-identity decision and is a bridge blocker. API keys, signed URLs, raw audio hash, and raw provider exceptions are not deliberately placed in artifact metadata; however `file_failures` is provider-provided data and is not structurally redacted. The status endpoint's persisted `error` string can contain a raw provider error because the service stores `str(exception)`.
+Internal metadata retains `media_path` so `GET /api/assets/{asset_id}/media` can stream the original file, but all public asset and artifact responses remove it. Public `file_failures` are reduced to `{"code":"provider_file_failed"}` entries and persisted error text is replaced with a generic safe failure message. API keys, signed URLs, raw audio hash, raw provider exceptions, headers, tracebacks, and absolute paths are not exported.
 
 ### Fabrication policy
 
@@ -237,7 +238,7 @@ All five return the same top-level response shape. Representative mode-specific 
 
 ## 6. Speaker rename
 
-**Implemented and verified in storage tests:** `PATCH /api/assets/{asset_id}/speakers/{speaker_id}` with path strings and JSON body `{"display_name":"New name"}`. A successful rename returns `200 {"ok":true}`. `display_name` is required by Pydantic but has no length or non-empty validation; route code strips whitespace, so an all-whitespace value can become an empty name. Missing/invalid JSON gives FastAPI `422`; an unknown speaker (including unknown asset) gives `404 {"detail":"Speaker not found"}`.
+**Implemented and verified in storage tests:** `PATCH /api/assets/{asset_id}/speakers/{speaker_id}` with path strings and JSON body `{"display_name":"New name"}`. A successful rename returns `200 {"ok":true}`. `display_name` is required by Pydantic but has no length or non-empty validation; route code strips whitespace, so an all-whitespace value can become an empty name. Missing/invalid JSON gives the structured `422 invalid_request` envelope; an unknown speaker (including unknown asset) gives `404 speaker_not_found`.
 
 ```bash
 curl -X PATCH http://127.0.0.1:8000/api/assets/<asset>/speakers/speaker_0 \
@@ -249,27 +250,34 @@ Rename updates canonical speaker storage and its stored profile, artifact output
 
 ## 7. Error contract
 
-There are no custom FastAPI exception handlers, no stable application error codes, no retryable field, no provider request ID field, and no structured error envelope. Runtime application errors use FastAPI's default `{"detail":"safe message"}` shape; validation errors use `{"detail":[ValidationError,...]}`. The generated OpenAPI declares only generic `200` and FastAPI `422` responses; its untyped dictionaries omit real 400/404/413/415/500/502/503 behavior.
+All handled public errors use one stable envelope. `details` is currently always an empty object and no public error exposes a provider request ID.
+
+```json
+{"error":{"code":"...","message":"...","retryable":false,"details":{}}}
+```
 
 | Situation | Runtime status / response | Retry signal |
 | --- | --- | --- |
-| unknown asset/status | 404 `Asset not found` | none |
-| missing/incomplete artifact | 404 `Completed artifact not found` | none |
-| media not found | 404 `Media not found` | none |
-| invalid search mode / empty query / malformed request | FastAPI 422 validation array | none |
-| empty upload | 400 detail string | choose another file |
-| unsupported suffix | 415 detail string | choose accepted media |
-| no audio / malformed media / FFmpeg failure | 422 detail string | re-export/retry source |
-| no usable diarised speech | 422 detail string | audible dialogue required |
-| Sarvam invalid payload/download | 502 safe detail | retry later |
-| Sarvam no successful file | 422 safe detail | inspect spoken audio, retry |
-| Sarvam request/poll failure | 503 safe detail | retry later |
-| unknown speaker | 404 `Speaker not found` | none |
-| SQLite/unknown server failure | 500 generic detail | unspecified |
+| unknown asset/status | 404 `asset_not_found` | false |
+| missing/incomplete artifact | 404 `artifact_not_found` | false |
+| media not found | 404 `media_not_found` | false |
+| malformed request / invalid mode | 422 `invalid_request` | false |
+| empty/unsupported upload | 400/415 `invalid_upload` | false |
+| oversize upload | 413 `upload_too_large` | false |
+| no audio | 422 `media_no_audio` | false |
+| FFmpeg extraction failure | 422 `ffmpeg_failed` | false |
+| malformed media | 422 `invalid_media` | false |
+| no usable diarised speech | 422 `no_speech` | false |
+| Sarvam authentication | 502 `sarvam_authentication` | false |
+| Sarvam rate limiting | 503 `sarvam_rate_limited` | true |
+| Sarvam timeout | 504 `provider_timeout` | true |
+| unusable Sarvam response | 502 `provider_response_invalid` | true |
+| other Sarvam error | 502 `provider_error` | true |
+| unknown speaker | 404 `speaker_not_found` | false |
+| SQLite failure | 500 `storage_failure` | false |
+| unexpected server failure | 500 `internal_error` | true |
 
-Sarvam 429/500/503/408 and connection failures are retried only around create/upload/start; authentication 403, 413, and 422 are not retried. However, all final `Sarvam request failed` messages map to HTTP 503, including invalid authentication; this is **partially implemented error semantics**. A partial Batch failure is accepted when at least one file succeeds; raw failed-file data is retained in artifact metadata. Poll timeout is mapped to the Batch-completion 503 message. SQLite failures receive the generic 500 path.
-
-The normal path does not expose API keys, request headers, signed URLs, tracebacks, or raw transcript text in errors. It does expose local absolute `media_path` in successful artifact and asset metadata, and may retain raw provider detail in persisted asset `error` and provider `file_failures`. A stable safe bridge error envelope is therefore an OffCam limitation/blocker.
+Sarvam 429/500/503/408 and connection failures are retried only around create/upload/start; authentication 403, 413, and 422 are not retried. A partial Batch failure is accepted when at least one file succeeds; public artifact metadata retains only safe file-failure codes. The normal path does not expose API keys, request headers, signed URLs, tracebacks, raw provider exceptions, raw transcript text, or absolute local paths in errors or JSON responses.
 
 ## 8. Storage and identity
 
@@ -311,9 +319,17 @@ From repository root:
 .venv/bin/python -m pytest -q
 ```
 
-Latest audit result: **37 passed, 1 skipped, 0 failed**. Default tests require no Sarvam key, make no network or paid Sarvam calls, do not require FFmpeg, and use temporary SQLite databases where storage is exercised.
+Latest audit result: **46 passed, 1 skipped, 0 failed**. Default tests require no Sarvam key, make no network or paid Sarvam calls, do not require FFmpeg, and use temporary SQLite databases where storage is exercised.
 
-There is no committed formal fixture-backed demo service and no committed preloaded asset ID. The standalone UI accepts `?asset=<id>` for locally seeded data under ignored `data/`; that is developer-local state, not a formal mock mode. It still requires a non-empty startup `SARVAM_API_KEY` value, though it does not need a valid key to read existing data.
+The formal fixture-backed service mode is implemented and tested. It uses committed synthetic output from `src/speechkit/fixtures/offcam_batch_output.json`; it makes no network request and needs no Sarvam key.
+
+```bash
+SPEECHKIT_FIXTURE_MODE=1 \
+SPEECHKIT_DATA_DIR=./data-fixture \
+.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Upload a supported filename to create deterministic `complete` analysis, then use normal status, artifact, search, rename, and export endpoints. No asset is preloaded; the ID is returned by the upload response.
 
 Real Sarvam is opt-in:
 
@@ -339,24 +355,24 @@ The marker is `integration`; it skips by default. It asserts only non-empty `job
 
 ## 11. Generated OpenAPI
 
-`docs/offcam-plugin-openapi.json` was fetched from the running service's `GET /openapi.json`; it was not hand-authored. It accurately exposes seven routes and request validation for file upload, speaker count, search mode, and rename body. It is incomplete for OffCam client generation because route responses are untyped dictionaries, `FileResponse` lacks a media response schema, runtime errors are dynamic/default FastAPI errors, and no response models declare artifact/status/search structures.
+`docs/offcam-plugin-openapi.json` was fetched from the running service's `GET /openapi.json`; it was not hand-authored. It accurately exposes eight routes, including typed `/health`, and request validation for file upload, speaker count, search mode, and rename body. It is incomplete for OffCam client generation because most route responses are untyped dictionaries, `FileResponse` lacks a media response schema, and no response models declare the shared error envelope or artifact/status/search structures.
 
 ## 12. Readiness verdict
 
 | Contract area | Ready | Partial | Missing | OffCam blocker |
 | --- | ---: | ---: | ---: | ---: |
 | Service startup | ✓ |  |  |  |
-| Health endpoint |  |  | ✓ | ✓ |
+| Health endpoint | ✓ |  |  |  |
 | Media ingestion | ✓ |  |  | ✓ |
 | Analysis lifecycle |  | ✓ |  | ✓ |
 | Artifact schema |  | ✓ |  | ✓ |
 | Search | ✓ |  |  |  |
 | Speaker rename | ✓ |  |  |  |
-| Error envelope |  | ✓ |  | ✓ |
+| Error envelope | ✓ |  |  |  |
 | Storage identity |  | ✓ |  | ✓ |
 | Frontend reuse |  | ✓ |  |  |
-| Fixture testing |  | ✓ |  |  |
+| Fixture testing | ✓ |  |  |  |
 
-**NO — the isolated OffCam bridge is blocked by missing project/asset identity namespacing and secure asset-reference ingestion, by exported local filesystem paths, and by the absence of a stable structured error envelope.**
+**YES, WITH LIMITATIONS — the isolated bridge still needs project/asset identity namespacing and secure OffCam asset-reference ingestion; current ingestion remains multipart upload only.**
 
-Smallest next SpeechKit slice: add a bridge-only request contract that accepts validated `{project_id, asset_id}` from an OffCam backend resolver (not browser paths/URLs), persists the pair alongside SpeechKit IDs, removes `media_path` from browser artifact output, and defines a stable safe error envelope. A dedicated health endpoint can be included in that same small operational slice. No global OffCam integration is required.
+Smallest next SpeechKit slice: add a bridge-only request contract that accepts validated `{project_id, asset_id}` from an OffCam backend resolver (not browser paths/URLs) and persists the pair alongside SpeechKit IDs. No global OffCam integration is required.

@@ -56,13 +56,30 @@ class Storage:
                 db.execute("INSERT INTO segment_fts VALUES (?, ?, ?, ?, ?, ?, ?)", (segment.segment_id, segment.asset_id, segment.text, " ".join(segment.keywords), " ".join(segment.entities), " ".join(segment.topics), segment.speaker_name))
                 if self.trigram_available: db.execute("INSERT INTO segment_trigram VALUES (?, ?, ?, ?, ?, ?)", (segment.segment_id, segment.asset_id, segment.text, " ".join(segment.keywords), " ".join(segment.entities), segment.speaker_name))
 
-    def get_asset(self, asset_id: str) -> dict | None:
+    @staticmethod
+    def _public_metadata(raw: str) -> dict:
+        metadata = json.loads(raw)
+        metadata.pop("media_path", None)
+        if isinstance(metadata.get("file_failures"), list):
+            metadata["file_failures"] = [{"code": "provider_file_failed"} for _ in metadata["file_failures"]]
+        return metadata
+
+    def _get_asset(self, asset_id: str) -> dict | None:
         with self._connect() as db:
             row = db.execute("SELECT * FROM assets WHERE asset_id=?", (asset_id,)).fetchone()
             return dict(row) if row else None
 
-    def get_artifact(self, asset_id: str) -> dict | None:
-        asset = self.get_asset(asset_id)
+    def get_asset(self, asset_id: str) -> dict | None:
+        asset = self._get_asset(asset_id)
+        if not asset:
+            return None
+        asset["metadata"] = json.dumps(self._public_metadata(asset["metadata"]))
+        if asset["error"]:
+            asset["error"] = "Analysis failed. Retry the recording or inspect secure server logs."
+        return asset
+
+    def _get_artifact(self, asset_id: str, public: bool) -> dict | None:
+        asset = self._get_asset(asset_id)
         if not asset or asset["status"] != "complete": return None
         with self._connect() as db:
             speakers = [json.loads(row["profile"]) for row in db.execute("SELECT profile FROM speakers WHERE asset_id=?", (asset_id,))]
@@ -70,7 +87,14 @@ class Storage:
         for segment in segments:
             segment["speaker_name"] = next((speaker["display_name"] for speaker in speakers if speaker["speaker_id"] == segment["speaker_id"]), segment["speaker_id"])
             for key in ("keywords", "entities", "topics"): segment[key] = json.loads(segment[key])
-        return {"schema_version": "speechkit.v1", "asset_id": asset_id, "filename": asset["filename"], "duration_seconds": asset["duration_seconds"], "provider": "sarvam", "model": "saaras:v3", "language_code": json.loads(asset["metadata"]).get("language_code"), "speakers": speakers, "segments": segments, "metadata": json.loads(asset["metadata"])}
+        metadata = json.loads(asset["metadata"])
+        return {"schema_version": "speechkit.v1", "asset_id": asset_id, "filename": asset["filename"], "duration_seconds": asset["duration_seconds"], "provider": "sarvam", "model": "saaras:v3", "language_code": metadata.get("language_code"), "speakers": speakers, "segments": segments, "metadata": self._public_metadata(asset["metadata"]) if public else metadata}
+
+    def get_artifact(self, asset_id: str) -> dict | None:
+        return self._get_artifact(asset_id, public=True)
+
+    def get_artifact_internal(self, asset_id: str) -> dict | None:
+        return self._get_artifact(asset_id, public=False)
 
     def rename_speaker(self, asset_id: str, speaker_id: str, display_name: str) -> None:
         with self._connect() as db:
