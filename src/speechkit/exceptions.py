@@ -10,5 +10,13 @@ class MediaError(SpeechKitError):
     pass
 
 
+class UnsupportedMediaError(MediaError):
+    pass
+
+
 class ProviderError(SpeechKitError):
+    pass
+
+
+class NoSpeechError(ProviderError):
     pass

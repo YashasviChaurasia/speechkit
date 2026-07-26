@@ -1,5 +1,5 @@
 from __future__ import annotations
-import shutil, tempfile, time
+import tempfile, time
 from pathlib import Path
 from typing import Literal
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -10,6 +10,8 @@ from speechkit.config import Settings
 from speechkit.sarvam_provider import SarvamProvider
 from speechkit.service import SpeechService
 from speechkit.storage import Storage
+from speechkit.exceptions import MediaError, NoSpeechError, ProviderError, UnsupportedMediaError
+from speechkit.media import validate_upload_filename
 
 settings=Settings.from_env(); store=Storage(settings.data_dir/"speechlens.sqlite")
 service=SpeechService(store,SarvamProvider(settings.api_key,poll_interval=settings.poll_interval,batch_timeout=settings.batch_timeout),settings.data_dir,settings.ffmpeg,settings.ffprobe)
@@ -19,10 +21,27 @@ class Rename(BaseModel): display_name: str
 @app.post("/api/assets")
 async def upload(file: UploadFile=File(...), num_speakers:int|None=None):
     if not file.filename: raise HTTPException(400,"Choose an audio or video file.")
-    with tempfile.NamedTemporaryFile(delete=False,suffix=Path(file.filename).suffix) as tmp: shutil.copyfileobj(file.file,tmp); path=Path(tmp.name)
-    if path.stat().st_size>settings.max_upload_bytes: path.unlink(); raise HTTPException(413,"Upload exceeds configured maximum size.")
-    try: return {"asset_id":service.process(file.filename,path,num_speakers),"stage":"complete"}
-    except Exception as e: raise HTTPException(422,str(e)) from e
+    try: filename=validate_upload_filename(file.filename)
+    except UnsupportedMediaError as error: raise HTTPException(415,str(error)) from error
+    path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False,suffix=Path(filename).suffix) as tmp:
+            path=Path(tmp.name); size=0
+            while chunk:=await file.read(1024*1024):
+                size+=len(chunk)
+                if size>settings.max_upload_bytes: raise HTTPException(413,"Upload exceeds configured maximum size.")
+                tmp.write(chunk)
+        if size == 0: raise HTTPException(400,"Upload is empty. Choose an audio or video file with spoken audio.")
+        return {"asset_id":service.process(filename,path,num_speakers),"stage":"complete"}
+    except HTTPException: raise
+    except NoSpeechError as error: raise HTTPException(422,str(error)) from error
+    except MediaError as error: raise HTTPException(422,str(error)) from error
+    except ProviderError as error: raise HTTPException(502,"Sarvam returned unusable transcription data. Retry the recording later.") from error
+    except Exception as error: raise HTTPException(500,"Processing failed unexpectedly. The asset was marked failed; retry the recording.") from error
+    finally:
+        await file.close()
+        if path and path.exists():
+            path.unlink()
 @app.get("/api/assets/{asset_id}")
 def asset(asset_id:str):
     found=store.get_asset(asset_id)

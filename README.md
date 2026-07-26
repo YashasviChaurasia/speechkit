@@ -17,6 +17,8 @@ set -a; source .env; set +a
 
 Open `http://127.0.0.1:8000`, upload a conversation, optionally set its expected speaker count, then rename/search/export from the completed view. FFmpeg converts the source to mono 16 kHz WAV while the original remains available for browser playback.
 
+SpeechLens rejects empty and unsupported uploads before they reach Sarvam, checks that media has a finite duration and an audio stream, and marks the asset failed when FFmpeg, Batch STT, or transcript normalisation fails. A valid recording with no usable diarised speech is reported as a failed analysis with retry guidance; malformed Sarvam responses are surfaced as controlled provider errors rather than crashing the server.
+
 See [demo setup](docs/setup.md) for prerequisites, secure local hosting, verification steps, and the opt-in real Sarvam test.
 
 ## Architecture

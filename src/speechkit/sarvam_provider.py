@@ -34,13 +34,29 @@ class SarvamProvider:
         job = self._with_retry(lambda: self._create_job(**kwargs))
         self._with_retry(lambda: job.upload_files(file_paths=[str(audio_path)]))
         self._with_retry(job.start)
-        status = job.wait_until_complete(poll_interval=self.poll_interval, timeout=self.batch_timeout)
-        files = job.get_file_results()
+        try:
+            status = job.wait_until_complete(poll_interval=self.poll_interval, timeout=self.batch_timeout)
+            files = job.get_file_results()
+        except Exception as error:
+            raise ProviderError("Sarvam batch job could not be completed.") from error
+        if not isinstance(files, dict):
+            raise ProviderError("Sarvam returned invalid file results.")
         successful, failed = files.get("successful", []), files.get("failed", [])
+        if not isinstance(successful, list) or not isinstance(failed, list):
+            raise ProviderError("Sarvam returned invalid file results.")
         if not successful: raise ProviderError(f"Batch job completed without successful files: {failed}")
         output_dir = audio_path.parent / "sarvam-output"; output_dir.mkdir(exist_ok=True)
-        job.download_outputs(output_dir=str(output_dir))
+        try:
+            job.download_outputs(output_dir=str(output_dir))
+        except Exception as error:
+            raise ProviderError("Sarvam could not download the transcript artifact.") from error
         output_file = next(output_dir.glob("*.json"), None)
         if not output_file: raise ProviderError("Sarvam did not download a JSON transcript artifact")
         import json
-        return json.loads(output_file.read_text()), str(getattr(status, "job_id", getattr(job, "job_id", "unknown"))), failed
+        try:
+            output = json.loads(output_file.read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            raise ProviderError("Sarvam downloaded invalid JSON transcript data.") from error
+        if not isinstance(output, dict):
+            raise ProviderError("Sarvam downloaded an invalid transcript payload.")
+        return output, str(getattr(status, "job_id", getattr(job, "job_id", "unknown"))), failed
