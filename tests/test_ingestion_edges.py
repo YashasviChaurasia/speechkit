@@ -25,11 +25,44 @@ def test_upload_rejects_empty_or_unsupported_files_before_processing(monkeypatch
     assert client.post("/api/assets", files={"file": ("notes.txt", b"not media", "text/plain")}).status_code == 415
 
 
+def test_upload_returns_actionable_sarvam_response_error(monkeypatch, tmp_path):
+    monkeypatch.setenv("SARVAM_API_KEY", "test-key")
+    monkeypatch.setenv("SPEECHKIT_DATA_DIR", str(tmp_path))
+    sys.modules.pop("app", None)
+    application = importlib.import_module("app")
+
+    def malformed_response(*_args):
+        raise ProviderError("Sarvam downloaded invalid JSON transcript data.")
+
+    monkeypatch.setattr(application.service, "process", malformed_response)
+    response = TestClient(application.app).post("/api/assets", files={"file": ("recording.wav", b"RIFF", "audio/wav")})
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Sarvam returned an unreadable transcript response. The recording was marked failed; retry in a few minutes."
+
+
+def test_upload_rejects_invalid_expected_speaker_count(monkeypatch, tmp_path):
+    monkeypatch.setenv("SARVAM_API_KEY", "test-key")
+    monkeypatch.setenv("SPEECHKIT_DATA_DIR", str(tmp_path))
+    sys.modules.pop("app", None)
+    application = importlib.import_module("app")
+    monkeypatch.setattr(application.service, "process", lambda *_: pytest.fail("invalid speaker count reached processing"))
+    response = TestClient(application.app).post("/api/assets", data={"num_speakers": "0"}, files={"file": ("recording.wav", b"RIFF", "audio/wav")})
+    assert response.status_code == 422
+
+
 def test_inspect_media_rejects_nonpositive_or_missing_duration(monkeypatch, tmp_path):
     media = tmp_path / "recording.wav"
     media.write_bytes(b"audio")
     monkeypatch.setattr("speechkit.media.subprocess.run", lambda *_, **__: subprocess.CompletedProcess([], 0, '{"format":{"duration":"0","format_name":"wav"},"streams":[{"codec_type":"audio"}]}', ""))
     with pytest.raises(MediaError, match="duration"):
+        inspect_media(media)
+
+
+def test_inspect_media_rejects_video_without_an_audio_track(monkeypatch, tmp_path):
+    media = tmp_path / "video.mp4"
+    media.write_bytes(b"video")
+    monkeypatch.setattr("speechkit.media.subprocess.run", lambda *_, **__: subprocess.CompletedProcess([], 0, '{"format":{"duration":"5","format_name":"mp4"},"streams":[{"codec_type":"video"}]}', ""))
+    with pytest.raises(MediaError, match="no audio track"):
         inspect_media(media)
 
 
@@ -73,7 +106,7 @@ def test_service_marks_speechless_recording_failed(monkeypatch, tmp_path):
         return target
 
     monkeypatch.setattr("speechkit.service.extract_audio", extract)
-    with pytest.raises(ProviderError, match="no usable diarised speech"):
+    with pytest.raises(ProviderError, match="clear spoken dialogue"):
         service.process("upload.wav", upload)
     with sqlite3.connect(store.path) as db:
         assert db.execute("SELECT status FROM assets").fetchone()[0] == "failed"

@@ -21,6 +21,6 @@ class SpeechService:
             self.storage.set_status(asset_id,"normalising"); estimate=round(info.duration_seconds/3600*(45 if num_speakers is not None else 45),4)
             artifact=normalize_batch_output(asset_id=asset_id,filename=filename,duration_seconds=info.duration_seconds,output=output,job_id=job_id,estimated_cost_inr=estimate,file_failures=failed)
             if not artifact.segments:
-                raise NoSpeechError("Sarvam completed, but found no usable diarised speech. Check that the recording contains clear spoken audio and retry.")
+                raise NoSpeechError("Sarvam could not find clear spoken dialogue with usable timestamps. Check that the recording has audible conversation, not silence or music, then retry.")
             artifact.metadata["language_code"]=artifact.language_code; artifact.metadata["media_path"]=str(original); self.storage.save_artifact(artifact); return asset_id
         except Exception as e: self.storage.set_status(asset_id,"failed",str(e)); raise

@@ -2,7 +2,7 @@ from __future__ import annotations
 import tempfile, time
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -18,8 +18,21 @@ service=SpeechService(store,SarvamProvider(settings.api_key,poll_interval=settin
 app=FastAPI(title="SpeechLens")
 
 class Rename(BaseModel): display_name: str
+
+def provider_failure(error: ProviderError) -> tuple[int, str]:
+    message = str(error).casefold()
+    if "invalid json" in message or "invalid transcript payload" in message or "invalid file results" in message:
+        return 502, "Sarvam returned an unreadable transcript response. The recording was marked failed; retry in a few minutes."
+    if "without successful files" in message:
+        return 422, "Sarvam could not transcribe this file. Confirm it contains clear spoken audio, then retry."
+    if "could not complete" in message or "request failed" in message:
+        return 503, "Sarvam could not complete the Batch transcription. The recording was marked failed; retry in a few minutes."
+    if "could not download" in message:
+        return 502, "Sarvam completed the job but the transcript could not be downloaded. Retry in a few minutes."
+    return 502, "Sarvam could not produce a usable transcript. The recording was marked failed; retry in a few minutes."
+
 @app.post("/api/assets")
-async def upload(file: UploadFile=File(...), num_speakers:int|None=None):
+async def upload(file: UploadFile=File(...), num_speakers:int|None=Form(None,ge=1,le=20)):
     if not file.filename: raise HTTPException(400,"Choose an audio or video file.")
     try: filename=validate_upload_filename(file.filename)
     except UnsupportedMediaError as error: raise HTTPException(415,str(error)) from error
@@ -36,7 +49,9 @@ async def upload(file: UploadFile=File(...), num_speakers:int|None=None):
     except HTTPException: raise
     except NoSpeechError as error: raise HTTPException(422,str(error)) from error
     except MediaError as error: raise HTTPException(422,str(error)) from error
-    except ProviderError as error: raise HTTPException(502,"Sarvam returned unusable transcription data. Retry the recording later.") from error
+    except ProviderError as error:
+        status, detail = provider_failure(error)
+        raise HTTPException(status,detail) from error
     except Exception as error: raise HTTPException(500,"Processing failed unexpectedly. The asset was marked failed; retry the recording.") from error
     finally:
         await file.close()
