@@ -9,6 +9,8 @@ from sarvamai import SarvamAI
 
 from .exceptions import ProviderError
 
+STT_MODES = frozenset({"transcribe", "translate", "verbatim", "translit", "codemix"})
+
 
 class SarvamProvider:
     def __init__(self, api_key: str, *, timeout: float = 60.0, poll_interval: int = 5, batch_timeout: int = 1800, sleep: Callable[[float], None] = time.sleep, random_value: Callable[[], float] = random.random):
@@ -28,8 +30,10 @@ class SarvamProvider:
     def _create_job(self, **kwargs):
         return self.client.speech_to_text_job.create_job(**kwargs)
 
-    def transcribe_batch(self, audio_path: Path, *, num_speakers: int | None = None) -> tuple[dict, str, list[dict]]:
-        kwargs = {"model": "saaras:v3", "mode": "transcribe", "language_code": "unknown", "with_diarization": True, "with_timestamps": True}
+    def transcribe_batch(self, audio_path: Path, *, num_speakers: int | None = None, mode: str = "transcribe") -> tuple[dict, str, list[dict]]:
+        if mode not in STT_MODES:
+            raise ProviderError("Unsupported Sarvam transcription mode.")
+        kwargs = {"model": "saaras:v3", "mode": mode, "language_code": "unknown", "with_diarization": True, "with_timestamps": True}
         if num_speakers: kwargs["num_speakers"] = num_speakers
         job = self._with_retry(lambda: self._create_job(**kwargs))
         self._with_retry(lambda: job.upload_files(file_paths=[str(audio_path)]))

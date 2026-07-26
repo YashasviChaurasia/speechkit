@@ -63,3 +63,22 @@ def test_malformed_batch_file_results_is_a_provider_error(monkeypatch, tmp_path)
     audio.write_bytes(b"wav")
     with pytest.raises(ProviderError, match="invalid file results"):
         provider.transcribe_batch(audio)
+
+
+def test_batch_uses_requested_saaras_v3_mode(monkeypatch, tmp_path):
+    captured = {}
+
+    class Job:
+        job_id = "job"
+        def upload_files(self, **_kwargs): pass
+        def start(self): pass
+        def wait_until_complete(self, **_kwargs): return self
+        def get_file_results(self): return {"successful": [{}], "failed": []}
+        def download_outputs(self, output_dir): Path(output_dir, "output.json").write_text("{}")
+
+    provider = SarvamProvider("key", sleep=lambda _: None)
+    monkeypatch.setattr(provider, "_create_job", lambda **kwargs: captured.update(kwargs) or Job())
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"wav")
+    provider.transcribe_batch(audio, mode="translit")
+    assert captured["mode"] == "translit"

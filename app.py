@@ -32,7 +32,7 @@ def provider_failure(error: ProviderError) -> tuple[int, str]:
     return 502, "Sarvam could not produce a usable transcript. The recording was marked failed; retry in a few minutes."
 
 @app.post("/api/assets")
-async def upload(file: UploadFile=File(...), num_speakers:int|None=Form(None,ge=1,le=20)):
+async def upload(file: UploadFile=File(...), num_speakers:int|None=Form(None,ge=1,le=20), mode:Literal["transcribe", "translate", "verbatim", "translit", "codemix"]=Form("transcribe")):
     if not file.filename: raise HTTPException(400,"Choose an audio or video file.")
     try: filename=validate_upload_filename(file.filename)
     except UnsupportedMediaError as error: raise HTTPException(415,str(error)) from error
@@ -45,7 +45,7 @@ async def upload(file: UploadFile=File(...), num_speakers:int|None=Form(None,ge=
                 if size>settings.max_upload_bytes: raise HTTPException(413,"Upload exceeds configured maximum size.")
                 tmp.write(chunk)
         if size == 0: raise HTTPException(400,"Upload is empty. Choose an audio or video file with spoken audio.")
-        return {"asset_id":service.process(filename,path,num_speakers),"stage":"complete"}
+        return {"asset_id":service.process(filename,path,num_speakers,mode),"stage":"complete"}
     except HTTPException: raise
     except NoSpeechError as error: raise HTTPException(422,str(error)) from error
     except MediaError as error: raise HTTPException(422,str(error)) from error

@@ -25,7 +25,7 @@ See [demo setup](docs/setup.md) for prerequisites, secure local hosting, verific
 
 `sarvam_provider.py` contains all SDK usage. `normalize.py` maps `diarized_transcript.entries` to canonical `SpeechSegment`s; Sarvam chunk timestamps remain under `metadata.sarvam_timestamps`. `storage.py` persists assets, jobs, speakers, segments and an SQLite FTS5 index. No Sarvam SDK object escapes the provider module.
 
-The batch call uses `saaras:v3`, `mode="transcribe"`, `language_code="unknown"`, `with_diarization=True`, and timestamp chunks. The lifecycle is create job, upload, start, wait, inspect per-file results, download JSON output, then normalise. It has no cancellation, deletion, retry-in-place, idempotency, webhook, streaming, translation UI, vector search, or paid-provider fallback.
+The batch call uses `saaras:v3`, `language_code="unknown"`, `with_diarization=True`, and timestamp chunks. The upload UI and API support Sarvam Batch modes `transcribe` (default), `translate`, `verbatim`, `translit` (Roman transliteration), and `codemix`; the selected mode is retained as `metadata.sarvam_mode`. The lifecycle is create job, upload, start, wait, inspect per-file results, download JSON output, then normalise. It has no cancellation, deletion, retry-in-place, idempotency, webhook, streaming, vector search, or paid-provider fallback.
 
 Sarvam publishes ₹45/hour for STT with diarisation, billed per second. SpeechLens estimates `media_duration / 3600 * 45` INR before metadata is persisted; billing semantics for failed jobs are not documented. Speaker IDs are recording-local labels, not cross-recording identities.
 

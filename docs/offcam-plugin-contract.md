@@ -59,20 +59,22 @@ A **valid** Sarvam key is not required merely to start the service: any non-empt
 | Path/query parameters | none |
 | Body `file` | required uploaded file; OpenAPI represents it as an octet-stream part |
 | Body `num_speakers` | optional integer form part; `1 <= value <= 20`; omission means `None` |
+| Body `mode` | optional string form part; `transcribe` (default), `translate`, `verbatim`, `translit`, or `codemix` |
 | Success | `200`, only after all synchronous processing completes |
 | Success body | `{"asset_id":"<32-char UUID hex>","stage":"complete"}` |
 | Validation | FastAPI `422` for missing/invalid form fields; `400` empty filename/file; `413` over size; `415` unsupported suffix |
 
 Accepted filename suffixes are `.aac`, `.avi`, `.flac`, `.m4a`, `.mkv`, `.mov`, `.mp3`, `.mp4`, `.mpeg`, `.mpg`, `.ogg`, `.opus`, `.wav`, and `.webm`. Filename suffix validation is followed by `ffprobe`; a deceptive or malformed file is rejected if it is unreadable, has no audio stream, or has no finite positive duration.
 
-The service accepts **multipart media upload only**. It does not accept a raw request body, local filesystem path, public URL, private URL, signed URL, opaque OffCam asset reference, URL fetching, or custom URL authentication headers. It does not upload original MP3/MP4 directly to Sarvam: it always runs FFmpeg to extract mono 16 kHz PCM WAV, then submits the WAV to Sarvam Batch STT.
+The service accepts **multipart media upload only**. It does not accept a raw request body, local filesystem path, public URL, private URL, signed URL, opaque OffCam asset reference, URL fetching, or custom URL authentication headers. It does not upload original MP3/MP4 directly to Sarvam: it always runs FFmpeg to extract mono 16 kHz PCM WAV, then submits the WAV to Sarvam Batch STT using the selected documented Saaras v3 mode.
 
 Implemented SpeechKit limits: upload size is 500 MiB (`Settings.max_upload_bytes`); there is no maximum media duration beyond positive finite duration; no HTTP request timeout is configured by FastAPI/Uvicorn. Internal timeouts are ffprobe 30 seconds, FFmpeg 300 seconds, Sarvam SDK client 60 seconds, and Batch wait 1,800 seconds. These are not Sarvam upstream limits. Sarvam limits are not encoded or verified by this service.
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/assets \
   -F 'file=@./recording.mp4;type=video/mp4' \
-  -F 'num_speakers=2'
+  -F 'num_speakers=2' \
+  -F 'mode=translit'
 ```
 
 ## 3. Analysis lifecycle
@@ -144,7 +146,7 @@ Each `segments[]` object has these non-null fields: `segment_id` (string), `asse
 
 Each `speakers[]` object has: `speaker_id` and `display_name` (strings); `speaking_seconds`, `speaking_percentage`, `average_turn_seconds`, and `longest_turn_seconds` (numbers; seconds except percentage); `word_count`, `turn_count`, and `questions_asked` (integers); plus `keywords`, `entities`, and `representative_quotes` (string arrays). Quotes are text only: no segment IDs, timestamps, or scores.
 
-Metadata is intentionally untyped and has these current normalisation keys: `sarvam_job_id` (string), `sarvam_request_id` (Sarvam value or null), `language_probability` (Sarvam value or null), `sarvam_timestamps` (raw Sarvam value or null), `file_failures` (array), `sarvam_response_metadata` (currently an `audio_mime` entry only when present), and `estimated_cost_inr` (number). The service adds `language_code` and `media_path`.
+Metadata is intentionally untyped and has these current normalisation keys: `sarvam_job_id` (string), `sarvam_request_id` (Sarvam value or null), `language_probability` (Sarvam value or null), `sarvam_timestamps` (raw Sarvam value or null), `file_failures` (array), `sarvam_response_metadata` (currently an `audio_mime` entry only when present), and `estimated_cost_inr` (number). The service adds `language_code`, `sarvam_mode` (the submitted mode), and `media_path`.
 
 `media_path` is an **absolute local filesystem path and is exported in the artifact**. This violates the eventual browser-facing OffCam asset-identity decision and is a bridge blocker. API keys, signed URLs, raw audio hash, and raw provider exceptions are not deliberately placed in artifact metadata; however `file_failures` is provider-provided data and is not structurally redacted. The status endpoint's persisted `error` string can contain a raw provider error because the service stores `str(exception)`.
 
@@ -291,7 +293,7 @@ Browser refresh and restart preserve completed data while the data directory rem
 
 | File / unit | Classification |
 | --- | --- |
-| `static/index.html` | standalone application shell, page layout, upload form, player, raw artifact panel; not directly reusable as a drawer component |
+| `static/index.html` | standalone application shell, page layout, upload form (including the five Sarvam mode choices), player, raw artifact panel; not directly reusable as a drawer component |
 | `static/app.js` `seek`, `time`, `tags`, `resultCard` | reusable plain JavaScript behavior, but tightly coupled DOM rendering |
 | `static/app.js` `refresh`, `rename`, `search` | API client logic coupled to global DOM state and relative URLs |
 | `static/app.js` `render` and event wiring | tightly coupled DOM code / standalone shell |

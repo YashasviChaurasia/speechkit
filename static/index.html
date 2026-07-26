@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SpeechLens</title><link rel="stylesheet" href="/styles.css"></head>
 <body><style>.close-match{background:#fff4d9;border-left:3px solid #e6a63b;padding:7px 9px;font-size:.8rem}.search-note{color:#687184;font-size:.78rem;margin:0}</style><main>
-  <header><div><p class="eyebrow">CONVERSATION EVIDENCE</p><h1>SpeechLens</h1><p>Inspect what Sarvam heard, who spoke, and exactly where a search matched.</p></div><form id="upload"><label>New recording<input type="file" name="file" required></label><label>Expected speakers<input type="number" name="num_speakers" min="1" max="20" placeholder="Auto"></label><button>Analyse recording</button></form></header>
+  <header><div><p class="eyebrow">CONVERSATION EVIDENCE</p><h1>SpeechLens</h1><p>Inspect what Sarvam heard, who spoke, and exactly where a search matched.</p></div><form id="upload"><label>New recording<input type="file" name="file" required></label><label>Expected speakers<input type="number" name="num_speakers" min="1" max="20" placeholder="Auto"></label><label>Transcript mode<select name="mode"><option value="transcribe">Transcribe</option><option value="translate">Translate to English</option><option value="verbatim">Verbatim</option><option value="translit">Roman transliteration</option><option value="codemix">Code-mixed</option></select></label><button>Analyse recording</button></form></header>
   <p id="status" role="status"></p>
   <section id="result" hidden>
     <section class="media-summary"><div><p class="eyebrow">PLAYBACK + MODEL</p><h2 id="filename"></h2><audio id="media" controls></audio></div><dl id="facts"></dl></section>
