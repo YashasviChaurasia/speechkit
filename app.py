@@ -10,11 +10,12 @@ from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from speechkit.config import Settings
-from speechkit.exceptions import MediaError, NoSpeechError, ProviderError, UnsupportedMediaError
+from speechkit.credentials import CredentialStore
+from speechkit.exceptions import CredentialStoreError, MediaError, NoSpeechError, ProviderError, UnsupportedMediaError
 from speechkit.fixture_provider import FixtureProvider
 from speechkit.media import validate_upload_filename
 from speechkit.sarvam_provider import SarvamProvider
@@ -35,6 +36,15 @@ class Health(BaseModel):
     status: Literal["ok"] = "ok"
     service: Literal["speechkit"] = "speechkit"
     version: str
+
+
+class ProviderConfiguration(BaseModel):
+    provider: Literal["sarvam"] = "sarvam"
+    configured: bool
+
+
+class ProviderKey(BaseModel):
+    api_key: str = Field(min_length=1, max_length=1024)
 
 
 def public_error(error: PublicError) -> JSONResponse:
@@ -58,6 +68,7 @@ settings = Settings.from_env()
 store = Storage(settings.data_dir / "speechlens.sqlite")
 provider = FixtureProvider() if settings.fixture_mode else SarvamProvider(settings.api_key or "", poll_interval=settings.poll_interval, batch_timeout=settings.batch_timeout)
 service = SpeechService(store, provider, settings.data_dir, settings.ffmpeg, settings.ffprobe, settings.fixture_mode)
+credentials = CredentialStore()
 app = FastAPI(title="SpeechLens", version="0.1.0")
 
 
@@ -86,6 +97,39 @@ async def handle_unexpected_error(_request: Request, error: Exception):
 @app.get("/health", response_model=Health)
 def health() -> Health:
     return Health(version=app.version)
+
+
+def provider_configuration() -> ProviderConfiguration:
+    try:
+        return ProviderConfiguration(configured=bool(credentials.get()))
+    except CredentialStoreError:
+        raise PublicError(500, "credential_store_unavailable", "SpeechKit could not access the operating-system credential store.")
+
+
+@app.get("/api/provider/config", response_model=ProviderConfiguration)
+def get_provider_config() -> ProviderConfiguration:
+    return provider_configuration()
+
+
+@app.put("/api/provider/config", response_model=ProviderConfiguration)
+def put_provider_config(body: ProviderKey) -> ProviderConfiguration:
+    api_key = body.api_key.strip()
+    if not api_key:
+        raise PublicError(422, "invalid_request", "Request validation failed.")
+    try:
+        credentials.save(api_key)
+    except CredentialStoreError:
+        raise PublicError(500, "credential_store_unavailable", "SpeechKit could not access the operating-system credential store.")
+    return ProviderConfiguration(configured=True)
+
+
+@app.delete("/api/provider/config", response_model=ProviderConfiguration)
+def delete_provider_config() -> ProviderConfiguration:
+    try:
+        credentials.remove()
+    except CredentialStoreError:
+        raise PublicError(500, "credential_store_unavailable", "SpeechKit could not access the operating-system credential store.")
+    return ProviderConfiguration(configured=False)
 
 
 @app.post("/api/assets")

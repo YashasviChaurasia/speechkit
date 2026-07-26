@@ -10,12 +10,39 @@ from speechkit.models import SpeechArtifact, SpeechSegment, SpeakerProfile
 from speechkit.storage import Storage
 
 
+class FakeCredentials:
+    def __init__(self, value=None):
+        self.value = value
+
+    def get(self):
+        return self.value
+
+    def save(self, value):
+        self.value = value
+
+    def remove(self):
+        self.value = None
+
+
 def fixture_app(monkeypatch, tmp_path):
     monkeypatch.delenv("SARVAM_API_KEY", raising=False)
     monkeypatch.setenv("SPEECHKIT_FIXTURE_MODE", "1")
     monkeypatch.setenv("SPEECHKIT_DATA_DIR", str(tmp_path))
     sys.modules.pop("app", None)
     return importlib.import_module("app")
+
+
+def test_provider_config_never_returns_the_submitted_key(monkeypatch, tmp_path):
+    application = fixture_app(monkeypatch, tmp_path)
+    fake = FakeCredentials()
+    monkeypatch.setattr(application, "credentials", fake)
+    client = TestClient(application.app)
+
+    assert client.get("/api/provider/config").json() == {"provider": "sarvam", "configured": False}
+    response = client.put("/api/provider/config", json={"api_key": "secret-value"})
+    assert response.json() == {"provider": "sarvam", "configured": True}
+    assert "secret-value" not in response.text
+    assert client.delete("/api/provider/config").json() == {"provider": "sarvam", "configured": False}
 
 
 def test_fixture_mode_starts_without_a_sarvam_key_and_has_typed_health(monkeypatch, tmp_path):
