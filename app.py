@@ -41,7 +41,7 @@ def media(asset_id:str):
     if not found: raise HTTPException(404,"Media not found")
     return FileResponse(found["metadata"]["media_path"])
 @app.get("/api/assets/{asset_id}/search")
-def search(asset_id:str, q:str=Query(min_length=1), mode:Literal["smart", "phrase", "prefix", "substring"]="smart"):
+def search(asset_id:str, q:str=Query(min_length=1), mode:Literal["smart", "phrase", "prefix", "substring", "closest"]="smart"):
     started=time.perf_counter(); results=store.search(asset_id,q,mode)
     return {"query":q,"mode":mode,"elapsed_ms":round((time.perf_counter()-started)*1000,3),"results":results}
 @app.patch("/api/assets/{asset_id}/speakers/{speaker_id}")

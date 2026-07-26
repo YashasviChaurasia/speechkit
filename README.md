@@ -27,6 +27,12 @@ The batch call uses `saaras:v3`, `mode="transcribe"`, `language_code="unknown"`,
 
 Sarvam publishes ₹45/hour for STT with diarisation, billed per second. SpeechLens estimates `media_duration / 3600 * 45` INR before metadata is persisted; billing semantics for failed jobs are not documented. Speaker IDs are recording-local labels, not cross-recording identities.
 
+## Search modes
+
+Standard SQLite FTS5 covers transcript tokens, quoted phrases, prefixes, and indexed keywords, entities, topics, and speaker names. Trigram FTS5 handles arbitrary middle-of-token substring searches. RapidFuzz supplies the `Closest keyword` mode and the Smart-mode fallback: it compares a query only with indexed structured metadata, not every transcript token.
+
+For example, `mutatin` can find the indexed keyword `mutating`. This is fuzzy token similarity, not semantic or conceptual search: `genetic transformation` will not be inferred as `mutating DNA`. Embeddings, synonyms, and semantic similarity are intentionally unsupported.
+
 ## Tests
 
 ```bash

@@ -42,7 +42,7 @@ Open `http://127.0.0.1:8000` in a browser on the same machine. This binds only t
 1. Upload a non-sensitive audio or video conversation.
 2. Wait for extraction, Batch STT, diarisation, and indexing to finish.
 3. Rename a speaker and search that new name.
-4. Try Smart, Exact phrase, Prefix, and Substring search.
+4. Try Smart, Exact phrase, Prefix, Substring, and Closest keyword search. Closest keyword uses RapidFuzz against indexed keywords, entities, topics, and speaker names for typo-tolerant token matching (for example, `mutatin` → `mutating`). It is not semantic or conceptual search.
 5. Click a result or transcript turn to seek the media player.
 6. Export the `speechkit.v1.json` artifact.
 

@@ -4,6 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from .fuzzy import SearchVocabularyTerm, fuzzy_candidates, normalise_term
 from .models import SpeechArtifact
 
 
@@ -92,26 +93,100 @@ class Storage:
 
     @staticmethod
     def _matched_fields(row: dict, query: str, mode: str) -> list[str]:
-        needle = query.lower()
+        needle = normalise_term(query.rstrip("*"))
         def matches(value: str) -> bool:
-            words = value.lower().split()
-            return any(word.startswith(needle) for word in words) if mode == "prefix" else needle in value.lower()
-        return [field for field, value in (("text", row["text"]), ("keywords", " ".join(row["keywords"])), ("entities", " ".join(row["entities"])), ("speaker_name", row["speaker_name"])) if matches(value)]
+            words = normalise_term(value).split()
+            return any(word.startswith(needle) for word in words) if mode == "prefix" else needle in normalise_term(value)
+        return [field for field, value in (("text", row["text"]), ("keywords", " ".join(row["keywords"])), ("entities", " ".join(row["entities"])), ("topics", " ".join(row["topics"])), ("speaker_name", row["speaker_name"])) if matches(value)]
+
+    @staticmethod
+    def _exact_match_type(fields: list[str], mode: str) -> str:
+        if mode == "phrase":
+            return "exact_phrase"
+        if mode == "prefix":
+            return "prefix"
+        if mode == "substring":
+            return "substring"
+        for field, match_type in (("text", "exact_text"), ("keywords", "exact_keyword"), ("entities", "exact_entity"), ("topics", "exact_topic"), ("speaker_name", "exact_speaker")):
+            if field in fields:
+                return match_type
+        return "exact_text"
+
+    @staticmethod
+    def _vocabulary(db: sqlite3.Connection, asset_id: str) -> list[SearchVocabularyTerm]:
+        terms: dict[tuple[str, str], tuple[str, set[str]]] = {}
+        rows = db.execute("""SELECT s.segment_id,s.keywords,s.entities,s.topics,p.display_name
+            FROM segments s JOIN speakers p ON p.asset_id=s.asset_id AND p.speaker_id=s.speaker_id
+            WHERE s.asset_id=?""", (asset_id,))
+        for row in rows:
+            values = (("keywords", json.loads(row["keywords"])), ("entities", json.loads(row["entities"])), ("topics", json.loads(row["topics"])), ("speaker_name", [row["display_name"]]))
+            for field, entries in values:
+                for display_term in entries:
+                    term = normalise_term(str(display_term))
+                    if not term:
+                        continue
+                    key = (term, field)
+                    if key not in terms:
+                        terms[key] = (str(display_term), set())
+                    terms[key][1].add(row["segment_id"])
+        return [SearchVocabularyTerm(term, display, field, sorted(segment_ids)) for (term, field), (display, segment_ids) in terms.items()]
+
+    @staticmethod
+    def _row_result(row: sqlite3.Row | dict, names: dict[str, str], query: str, mode: str) -> dict:
+        result = {**dict(row), "speaker_name": names[row["speaker_id"]], "keywords": json.loads(row["keywords"]), "entities": json.loads(row["entities"]), "topics": json.loads(row["topics"]), "score": round(float(row["score"]), 4)}
+        result["matched_fields"] = Storage._matched_fields(result, query, mode)
+        result["match_type"] = Storage._exact_match_type(result["matched_fields"], mode)
+        result["matched_term"] = query.rstrip("*").strip('"')
+        result["similarity"] = 1.0
+        result["is_exact"] = True
+        return result
+
+    def _fuzzy_results(self, db: sqlite3.Connection, asset_id: str, query: str) -> list[dict]:
+        candidates = fuzzy_candidates(query, self._vocabulary(db, asset_id))
+        if not candidates:
+            return []
+        rows = {row["segment_id"]: row for row in db.execute("""SELECT s.segment_id,s.text,s.speaker_id,s.start_seconds,s.end_seconds,s.keywords,s.entities,s.topics,0.0 AS score
+            FROM segments s WHERE s.asset_id=?""", (asset_id,))}
+        names = {row["speaker_id"]: row["display_name"] for row in db.execute("SELECT speaker_id, display_name FROM speakers WHERE asset_id=?", (asset_id,))}
+        field_order = {"keywords": 0, "entities": 1, "topics": 2, "speaker_name": 3}
+        found: dict[str, dict] = {}
+        for candidate in candidates:
+            for segment_id in candidate.term.segment_ids:
+                row = rows.get(segment_id)
+                if not row:
+                    continue
+                exact = candidate.similarity == 1.0
+                match_type = ("exact_" if exact else "fuzzy_") + {"keywords": "keyword", "entities": "entity", "topics": "topic", "speaker_name": "speaker"}[candidate.term.field]
+                result = found.get(segment_id)
+                priority = (exact, candidate.similarity, -field_order[candidate.term.field])
+                if result is None or priority > result["_priority"]:
+                    result = self._row_result(row, names, query, "smart")
+                    result.update({"score": 1.0 if exact else round(candidate.similarity * 0.70, 4), "match_type": match_type, "matched_term": candidate.term.display_term, "similarity": candidate.similarity, "is_exact": exact, "matched_fields": [candidate.term.field], "_priority": priority})
+                    found[segment_id] = result
+                elif candidate.term.field not in result["matched_fields"]:
+                    result["matched_fields"].append(candidate.term.field)
+        results = list(found.values())
+        for result in results:
+            result.pop("_priority")
+        return sorted(results, key=lambda result: (not result["is_exact"], -result["similarity"], field_order[result["matched_fields"][0]], result["start_seconds"]))
 
     def search(self, asset_id: str, query: str, mode: str = "smart") -> list[dict]:
-        if mode not in {"smart", "phrase", "prefix", "substring"}: raise ValueError("Unsupported search mode")
+        if mode not in {"smart", "phrase", "prefix", "substring", "closest"}: raise ValueError("Unsupported search mode")
+        if not query.strip():
+            return []
         with self._connect() as db:
+            if mode == "closest":
+                return self._fuzzy_results(db, asset_id, query)
             if mode == "substring" and not self.trigram_available:
-                rows = db.execute("""SELECT s.segment_id,s.text,s.speaker_id,s.start_seconds,s.end_seconds,s.keywords,s.entities,0.0 AS score FROM segments s JOIN speakers p ON p.asset_id=s.asset_id AND p.speaker_id=s.speaker_id WHERE s.asset_id=? AND lower(s.text || ' ' || s.keywords || ' ' || s.entities || ' ' || p.display_name) LIKE '%' || lower(?) || '%' ORDER BY s.start_seconds LIMIT 50""", (asset_id, query)).fetchall()
+                rows = db.execute("""SELECT s.segment_id,s.text,s.speaker_id,s.start_seconds,s.end_seconds,s.keywords,s.entities,s.topics,0.0 AS score FROM segments s JOIN speakers p ON p.asset_id=s.asset_id AND p.speaker_id=s.speaker_id WHERE s.asset_id=? AND lower(s.text || ' ' || s.keywords || ' ' || s.entities || ' ' || s.topics || ' ' || p.display_name) LIKE '%' || lower(?) || '%' ORDER BY s.start_seconds LIMIT 50""", (asset_id, query)).fetchall()
             else:
                 table = "segment_trigram" if mode == "substring" else "segment_fts"
                 expression = query if mode == "substring" else self._fts_query(query, mode)
                 weights = "1.0, 1.3, 1.3, 1.1, 1.1" if table == "segment_fts" else "1.0, 1.3, 1.3, 1.1"
-                rows = db.execute(f"""SELECT f.segment_id, f.text, s.speaker_id, s.start_seconds, s.end_seconds, s.keywords, s.entities, bm25({table}, {weights}) AS score FROM {table} f JOIN segments s ON s.segment_id=f.segment_id WHERE f.asset_id=? AND {table} MATCH ? ORDER BY score LIMIT 50""", (asset_id, expression)).fetchall()
+                rows = db.execute(f"""SELECT f.segment_id, f.text, s.speaker_id, s.start_seconds, s.end_seconds, s.keywords, s.entities, s.topics, bm25({table}, {weights}) AS score FROM {table} f JOIN segments s ON s.segment_id=f.segment_id WHERE f.asset_id=? AND {table} MATCH ? ORDER BY score LIMIT 50""", (asset_id, expression)).fetchall()
             names = {row["speaker_id"]: row["display_name"] for row in db.execute("SELECT speaker_id, display_name FROM speakers WHERE asset_id=?", (asset_id,))}
-        results = []
-        for row in rows:
-            result = {**dict(row), "speaker_name": names[row["speaker_id"]], "keywords": json.loads(row["keywords"]), "entities": json.loads(row["entities"]), "score": round(float(row["score"]), 4)}
-            result["matched_fields"] = self._matched_fields(result, query, mode)
-            results.append(result)
+            results = [self._row_result(row, names, query, mode) for row in rows]
+            if mode == "smart" and len(results) < 2:
+                exact_ids = {result["segment_id"] for result in results}
+                results.extend(result for result in self._fuzzy_results(db, asset_id, query) if result["segment_id"] not in exact_ids)
         return results
