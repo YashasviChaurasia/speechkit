@@ -29,7 +29,7 @@
 - Consumes: existing JavaScript IDs `upload`, `status`, `result`, `media`, `filename`, `facts`, `speaker-cards`, `query`, `mode`, `search`, `search-meta`, `results`, `segments`, `raw`, and `export`.
 - Produces: anchor targets `upload-panel`, `overview`, `speakers`, `search-panel`, `transcript`, and `artifact`; rail links that target each ID.
 
-- [ ] **Step 1: Write the failing static-shell test**
+- [x] **Step 1: Write the failing static-shell test**
 
 ```python
 from pathlib import Path
@@ -44,13 +44,13 @@ def test_editorial_shell_has_navigation_and_stable_render_targets():
         assert f'id="{element_id}"' in html
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m pytest -q tests/test_ui_shell.py::test_editorial_shell_has_navigation_and_stable_render_targets`
 
 Expected: FAIL because the current shell has no `upload-panel` or rail anchors.
 
-- [ ] **Step 3: Rebuild `static/index.html` as the editorial shell**
+- [x] **Step 3: Rebuild `static/index.html` as the editorial shell**
 
 Use this structural outline while retaining all existing form names and render IDs:
 
@@ -71,13 +71,13 @@ Use this structural outline while retaining all existing form names and render I
 
 Place the upload form in `#upload-panel`; place the completed player/facts in `#overview`; give the raw artifact `<details>` container `id="artifact"`. Keep `#result` hidden until `render()` runs.
 
-- [ ] **Step 4: Run the static-shell test to verify it passes**
+- [x] **Step 4: Run the static-shell test to verify it passes**
 
 Run: `.venv/bin/python -m pytest -q tests/test_ui_shell.py::test_editorial_shell_has_navigation_and_stable_render_targets`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the shell contract**
+- [x] **Step 5: Commit the shell contract**
 
 ```bash
 git add static/index.html tests/test_ui_shell.py
@@ -94,7 +94,7 @@ git commit -m "feat: add SpeechLens workspace shell"
 - Consumes: rail and section classes from Task 1, plus existing generated classes `speaker-card`, `result`, `segment`, `tags`, `entities`, `close-match`, and `empty`.
 - Produces: desktop two-column workspace, compact mobile rail, visible focus styles, and reduced-motion support.
 
-- [ ] **Step 1: Add the failing visual-system assertions**
+- [x] **Step 1: Add the failing visual-system assertions**
 
 ```python
 def test_editorial_styles_define_workspace_accessibility_and_mobile_layout():
@@ -103,13 +103,13 @@ def test_editorial_styles_define_workspace_accessibility_and_mobile_layout():
         assert selector in css
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m pytest -q tests/test_ui_shell.py::test_editorial_styles_define_workspace_accessibility_and_mobile_layout`
 
 Expected: FAIL because the current CSS lacks the rail and reduced-motion rules.
 
-- [ ] **Step 3: Replace `static/styles.css` with the scoped visual system**
+- [x] **Step 3: Replace `static/styles.css` with the scoped visual system**
 
 Define the documented paper, surface, ink, quiet, rule, cobalt, and warm-marker CSS variables. Use a fixed `260px` rail on desktop, a max-width canvas, border-led white cards, and compact monospace labels. Add:
 
@@ -121,13 +121,13 @@ Define the documented paper, surface, ink, quiet, rule, cobalt, and warm-marker 
 
 Ensure result cards, transcript buttons, input controls, speaker cards, raw artifact, and status styles remain readable and interactive.
 
-- [ ] **Step 4: Run the visual-system test to verify it passes**
+- [x] **Step 4: Run the visual-system test to verify it passes**
 
 Run: `.venv/bin/python -m pytest -q tests/test_ui_shell.py::test_editorial_styles_define_workspace_accessibility_and_mobile_layout`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the visual system**
+- [x] **Step 5: Commit the visual system**
 
 ```bash
 git add static/styles.css tests/test_ui_shell.py
@@ -144,7 +144,7 @@ git commit -m "feat: style SpeechLens editorial workspace"
 - Consumes: existing artifact response, search response, and public error shape `{error: {message: string}}`.
 - Produces: generated section markers, status chip state, active rail links, and safe upload/search error text.
 
-- [ ] **Step 1: Add the failing script-contract test**
+- [x] **Step 1: Add the failing script-contract test**
 
 ```python
 def test_ui_script_uses_safe_error_messages_and_rail_navigation_state():
@@ -154,13 +154,13 @@ def test_ui_script_uses_safe_error_messages_and_rail_navigation_state():
     assert "IntersectionObserver" in script
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m pytest -q tests/test_ui_shell.py::test_ui_script_uses_safe_error_messages_and_rail_navigation_state`
 
 Expected: FAIL because the current script reads `data.detail` and has no rail-state observer.
 
-- [ ] **Step 3: Update `static/app.js` without changing endpoint calls**
+- [x] **Step 3: Update `static/app.js` without changing endpoint calls**
 
 Use the existing render functions and IDs. Change failed API rendering to:
 
@@ -170,13 +170,13 @@ const message = data.error?.message || data.detail || "SpeechLens could not comp
 
 Add `rail-link` classes to the anchor markup in Task 1 and a small `IntersectionObserver` that toggles an `is-current` class for the visible report section. Keep `seek()`, `refresh()`, `rename()`, `search()`, and export behavior unchanged. Add a `status--complete` class after a successful upload and `status--error` class after a failed one.
 
-- [ ] **Step 4: Run the script-contract test to verify it passes**
+- [x] **Step 4: Run the script-contract test to verify it passes**
 
 Run: `.venv/bin/python -m pytest -q tests/test_ui_shell.py::test_ui_script_uses_safe_error_messages_and_rail_navigation_state`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the rendering polish**
+- [x] **Step 5: Commit the rendering polish**
 
 ```bash
 git add static/app.js tests/test_ui_shell.py
@@ -192,7 +192,7 @@ git commit -m "feat: polish SpeechLens workspace interactions"
 - Consumes: fixture-mode command documented in README and all existing static/application routes.
 - Produces: an explicit note that the editorial workspace is available in fixture mode and preserves the same workflow.
 
-- [ ] **Step 1: Update the README UI description**
+- [x] **Step 1: Update the README UI description**
 
 Add this sentence below the fixture-mode start command:
 
@@ -200,13 +200,15 @@ Add this sentence below the fixture-mode start command:
 The browser opens an editorial workspace with a left navigation rail for Upload, Overview, Speakers, Search, Transcript, and Artifact; it is the same workflow used for live Sarvam analysis.
 ```
 
-- [ ] **Step 2: Run the complete non-paid suite**
+- [x] **Step 2: Run the complete non-paid suite**
 
 Run: `.venv/bin/python -m pytest -q`
 
 Expected: all default tests pass; the opt-in integration test remains skipped unless explicitly enabled.
 
 - [ ] **Step 3: Run the fixture-mode server and inspect in a real browser**
+
+Browser visual inspection could not be completed because no browser surface was available in this environment. The fixture-mode HTTP smoke test did verify the rendered shell is served, upload completes, search returns results, rename works, and the public artifact remains redacted.
 
 Run:
 
@@ -217,7 +219,7 @@ SPEECHKIT_FIXTURE_MODE=1 SPEECHKIT_DATA_DIR=/tmp/speechlens-ui-fixture \
 
 Verify: desktop rail anchors scroll correctly; a supported fixture upload reaches the completed workspace; search results and transcript turns seek playback; rename persists after refresh; the narrow viewport collapses the rail; no public artifact JSON contains `media_path`.
 
-- [ ] **Step 4: Commit the verification documentation**
+- [x] **Step 4: Commit the verification documentation**
 
 ```bash
 git add README.md
