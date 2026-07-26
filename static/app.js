@@ -11,6 +11,67 @@ function setStatus(message, kind = "") {
   status.className = `status${kind ? ` status--${kind}` : ""}`;
 }
 
+function setProviderMessage(message, kind = "") {
+  const target = $("#provider-message");
+  target.textContent = message;
+  target.className = `provider-message${kind ? ` provider-message--${kind}` : ""}`;
+}
+
+function setProviderConfigured(configured) {
+  $("#analyse").disabled = !configured;
+  $("#provider-state").textContent = configured ? "Configured" : "Not configured";
+  $("#save-api-key").textContent = configured ? "Replace API key" : "Save API key";
+  $("#remove-api-key").hidden = !configured;
+}
+
+async function refreshProviderConfig() {
+  try {
+    const response = await fetch("/api/provider/config");
+    const data = await response.json();
+    if (!response.ok) throw new Error(safeMessage(data));
+    setProviderConfigured(Boolean(data.configured));
+  } catch (error) {
+    setProviderConfigured(false);
+    setProviderMessage(error.message || "SpeechLens could not check Sarvam configuration.", "error");
+  }
+}
+
+async function saveProviderKey(event) {
+  event.preventDefault();
+  const apiKey = $("#api-key");
+  if (!apiKey.value.trim()) {
+    setProviderMessage("Enter a Sarvam API key to continue.", "error");
+    return;
+  }
+  try {
+    const response = await fetch("/api/provider/config", {
+      method: "PUT",
+      headers: {"content-type":"application/json"},
+      body: JSON.stringify({api_key: apiKey.value}),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(safeMessage(data));
+    setProviderConfigured(Boolean(data.configured));
+    setProviderMessage("API key saved. Analysis uses real Sarvam credits.", "complete");
+  } catch (error) {
+    setProviderMessage(error.message || "SpeechLens could not save the API key.", "error");
+  } finally {
+    apiKey.value = "";
+  }
+}
+
+async function removeProviderKey() {
+  try {
+    const response = await fetch("/api/provider/config", {method: "DELETE"});
+    const data = await response.json();
+    if (!response.ok) throw new Error(safeMessage(data));
+    setProviderConfigured(Boolean(data.configured));
+    setProviderMessage("API key removed. Analysis is disabled.");
+  } catch (error) {
+    setProviderMessage(error.message || "SpeechLens could not remove the API key.", "error");
+  }
+}
+
 function seek(seconds) {
   const media = $("#media");
   media.currentTime = seconds;
@@ -131,6 +192,14 @@ $("#upload").onsubmit = async event => {
 
 $("#search").onclick = search;
 $("#query").onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); search(); } };
+$("#provider-key-form").onsubmit = saveProviderKey;
+$("#toggle-api-key").onclick = () => {
+  const apiKey = $("#api-key");
+  const visible = apiKey.type === "text";
+  apiKey.type = visible ? "password" : "text";
+  $("#toggle-api-key").textContent = visible ? "Show" : "Hide";
+};
+$("#remove-api-key").onclick = removeProviderKey;
 document.addEventListener("click", event => {
   const renameButton = event.target.closest(".rename");
   const start = event.target.closest("[data-start]");
@@ -145,6 +214,7 @@ $("#export").onclick = () => {
 };
 
 setupRail();
+refreshProviderConfig();
 const preloaded = new URLSearchParams(location.search).get("asset");
 if (preloaded) {
   asset = preloaded;

@@ -21,3 +21,15 @@ def test_ui_script_uses_safe_error_messages_and_rail_navigation_state():
     assert "data.error?.message" in script
     assert "rail-link" in script
     assert "IntersectionObserver" in script
+
+
+def test_ui_exposes_provider_configuration_without_retaining_keys():
+    html = Path("static/index.html").read_text()
+    script = Path("static/app.js").read_text()
+
+    assert 'id="provider-config"' in html
+    assert 'id="api-key"' in html
+    assert 'type="password"' in html
+    assert 'id="analyse"' in html
+    assert '"/api/provider/config"' in script
+    assert 'apiKey.value = ""' in script

@@ -38,11 +38,24 @@
           <div><p class="section-marker">01 / NEW ANALYSIS</p><h2 id="upload-title">Analyse a recording</h2></div>
           <p class="section-note">Sarvam Batch STT · diarised turns · searchable evidence</p>
         </div>
+        <section id="provider-config" class="provider-config" aria-labelledby="provider-title">
+          <div>
+            <p class="utility-label" id="provider-title">Sarvam access</p>
+            <p id="provider-state" class="provider-state" role="status" aria-live="polite">Checking configuration…</p>
+          </div>
+          <form id="provider-key-form" class="provider-key-form">
+            <label><span>API key</span><input id="api-key" type="password" autocomplete="off" placeholder="Sarvam API key"></label>
+            <button id="toggle-api-key" class="secondary-action" type="button">Show</button>
+            <button id="save-api-key" class="secondary-action" type="submit">Save API key</button>
+            <button id="remove-api-key" class="secondary-action" type="button" hidden>Remove</button>
+          </form>
+          <p id="provider-message" class="provider-message">Analysis uses real Sarvam credits.</p>
+        </section>
         <form id="upload" class="upload-form">
           <label class="file-control"><span>Recording</span><input type="file" name="file" required><small>Audio or video</small></label>
           <label><span>Expected speakers</span><input type="number" name="num_speakers" min="1" max="20" placeholder="Auto"></label>
           <label><span>Transcript mode</span><select name="mode"><option value="transcribe">Transcribe</option><option value="translate">Translate to English</option><option value="verbatim">Verbatim</option><option value="translit">Roman transliteration</option><option value="codemix">Code-mixed</option></select></label>
-          <button class="primary-action" type="submit">Analyse recording <span>→</span></button>
+          <button id="analyse" class="primary-action" type="submit" disabled>Analyse recording <span>→</span></button>
         </form>
         <p id="status" class="status" role="status" aria-live="polite">Choose a conversation to begin.</p>
       </section>
