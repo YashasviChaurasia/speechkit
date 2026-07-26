@@ -14,3 +14,10 @@ def test_editorial_styles_define_workspace_accessibility_and_mobile_layout():
     css = Path("static/styles.css").read_text()
     for selector in (".rail", ".workspace", ".section-marker", ":focus-visible", "prefers-reduced-motion", "@media(max-width:820px)"):
         assert selector in css
+
+
+def test_ui_script_uses_safe_error_messages_and_rail_navigation_state():
+    script = Path("static/app.js").read_text()
+    assert "data.error?.message" in script
+    assert "rail-link" in script
+    assert "IntersectionObserver" in script
