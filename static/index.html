@@ -1,12 +1,107 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SpeechLens</title><link rel="stylesheet" href="/styles.css"></head>
-<body><style>.close-match{background:#fff4d9;border-left:3px solid #e6a63b;padding:7px 9px;font-size:.8rem}.search-note{color:#687184;font-size:.78rem;margin:0}</style><main>
-  <header><div><p class="eyebrow">CONVERSATION EVIDENCE</p><h1>SpeechLens</h1><p>Inspect what Sarvam heard, who spoke, and exactly where a search matched.</p></div><form id="upload"><label>New recording<input type="file" name="file" required></label><label>Expected speakers<input type="number" name="num_speakers" min="1" max="20" placeholder="Auto"></label><label>Transcript mode<select name="mode"><option value="transcribe">Transcribe</option><option value="translate">Translate to English</option><option value="verbatim">Verbatim</option><option value="translit">Roman transliteration</option><option value="codemix">Code-mixed</option></select></label><button>Analyse recording</button></form></header>
-  <p id="status" role="status"></p>
-  <section id="result" hidden>
-    <section class="media-summary"><div><p class="eyebrow">PLAYBACK + MODEL</p><h2 id="filename"></h2><audio id="media" controls></audio></div><dl id="facts"></dl></section>
-    <section class="columns"><aside class="speakers"><p class="eyebrow">SPEAKER INTELLIGENCE</p><div id="speaker-cards"></div></aside>
-      <section class="search"><div class="section-heading"><div><p class="eyebrow">SEARCH INSPECTOR</p><h2>Prove the match</h2></div><button id="export">Export JSON</button></div><div class="search-controls"><input id="query" placeholder='Try terraform, "customer managed", deploy*' autocomplete="off"><select id="mode"><option value="smart">Smart</option><option value="phrase">Exact phrase</option><option value="prefix">Prefix</option><option value="substring">Substring</option><option value="closest">Closest keyword</option></select><button id="search">Search</button></div><p class="search-note">Closest keyword handles misspellings and similar tokens. It does not perform semantic or conceptual search.</p><p id="search-meta">Enter a query to inspect indexed fields.</p><div id="results"></div></section></section>
-    <section class="transcript"><div class="section-heading"><div><p class="eyebrow">CANONICAL DIARISED TURNS</p><h2>Transcript inspector</h2></div><details><summary>Raw speechkit.v1 JSON</summary><pre id="raw"></pre></details></div><div id="segments"></div></section>
-  </section>
-</main><script src="/app.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f7f7f5">
+  <title>SpeechLens · Conversation evidence</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail" aria-label="SpeechLens sections">
+      <a class="rail-brand" href="#upload-panel"><span class="rail-mark">SL</span><span>SpeechLens</span></a>
+      <p class="rail-label">Analysis workspace</p>
+      <nav class="rail-nav" aria-label="Page sections">
+        <a class="rail-link is-current" href="#upload-panel"><span>01</span> Upload</a>
+        <a class="rail-link" href="#overview"><span>02</span> Overview</a>
+        <a class="rail-link" href="#speakers"><span>03</span> Speakers</a>
+        <a class="rail-link" href="#search-panel"><span>04</span> Search</a>
+        <a class="rail-link" href="#transcript"><span>05</span> Transcript</a>
+        <a class="rail-link" href="#artifact"><span>06</span> Artifact</a>
+      </nav>
+      <div class="rail-footer">
+        <span class="rail-rule"></span>
+        <p>Conversation evidence<br><span>Local analysis tool</span></p>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <section class="intro" aria-labelledby="page-title">
+        <p class="section-marker">SpeechLens / Analysis</p>
+        <h1 id="page-title">See what the conversation contains.</h1>
+        <p>Upload a recording, inspect speaker evidence, and return to the exact moment a phrase was spoken.</p>
+      </section>
+
+      <section class="report-section upload-panel" id="upload-panel" aria-labelledby="upload-title">
+        <div class="section-heading">
+          <div><p class="section-marker">01 / NEW ANALYSIS</p><h2 id="upload-title">Analyse a recording</h2></div>
+          <p class="section-note">Sarvam Batch STT · diarised turns · searchable evidence</p>
+        </div>
+        <form id="upload" class="upload-form">
+          <label class="file-control"><span>Recording</span><input type="file" name="file" required><small>Audio or video</small></label>
+          <label><span>Expected speakers</span><input type="number" name="num_speakers" min="1" max="20" placeholder="Auto"></label>
+          <label><span>Transcript mode</span><select name="mode"><option value="transcribe">Transcribe</option><option value="translate">Translate to English</option><option value="verbatim">Verbatim</option><option value="translit">Roman transliteration</option><option value="codemix">Code-mixed</option></select></label>
+          <button class="primary-action" type="submit">Analyse recording <span>→</span></button>
+        </form>
+        <p id="status" class="status" role="status" aria-live="polite">Choose a conversation to begin.</p>
+      </section>
+
+      <section id="result" hidden>
+        <section class="report-section overview-panel" id="overview" aria-labelledby="overview-title">
+          <div class="section-heading">
+            <div><p class="section-marker">02 / RECORDING OVERVIEW</p><h2 id="filename"></h2></div>
+            <span class="status-chip">Complete</span>
+          </div>
+          <div class="overview-grid">
+            <div class="player-panel"><p class="utility-label">Playback</p><audio id="media" controls></audio><p class="player-hint">Select a transcript turn or search result to play from its timestamp.</p></div>
+            <dl id="facts" class="facts-grid"></dl>
+          </div>
+        </section>
+
+        <section class="report-section" id="speakers" aria-labelledby="speakers-title">
+          <div class="section-heading">
+            <div><p class="section-marker">03 / SPEAKER INTELLIGENCE</p><h2 id="speakers-title">Who carried the conversation</h2></div>
+            <p class="section-note">Rename a recording-local speaker label at any time.</p>
+          </div>
+          <div id="speaker-cards" class="speaker-grid"></div>
+        </section>
+
+        <section class="report-section search-panel" id="search-panel" aria-labelledby="search-title">
+          <div class="section-heading">
+            <div><p class="section-marker">04 / SEARCH INSPECTOR</p><h2 id="search-title">Prove the match</h2></div>
+            <p id="search-meta" class="search-meta">Enter a query to inspect indexed fields.</p>
+          </div>
+          <div class="search-controls">
+            <label class="visually-hidden" for="query">Search transcript and indexed metadata</label>
+            <input id="query" placeholder='Try terraform, "customer managed", deploy*' autocomplete="off">
+            <label class="visually-hidden" for="mode">Search mode</label>
+            <select id="mode"><option value="smart">Smart</option><option value="phrase">Exact phrase</option><option value="prefix">Prefix</option><option value="substring">Substring</option><option value="closest">Closest keyword</option></select>
+            <button id="search" type="button">Search</button>
+            <button id="export" class="secondary-action" type="button">Export JSON</button>
+          </div>
+          <p class="search-note">Closest keyword handles misspellings and similar tokens. It does not perform semantic or conceptual search.</p>
+          <div id="results" class="result-list"></div>
+        </section>
+
+        <section class="report-section transcript-panel" id="transcript" aria-labelledby="transcript-title">
+          <div class="section-heading">
+            <div><p class="section-marker">05 / CANONICAL DIARISED TURNS</p><h2 id="transcript-title">Transcript inspector</h2></div>
+            <p class="section-note">Every row opens the source media at its recorded start time.</p>
+          </div>
+          <div id="segments" class="segment-list"></div>
+        </section>
+
+        <section class="report-section artifact-panel" id="artifact" aria-labelledby="artifact-title">
+          <div class="section-heading">
+            <div><p class="section-marker">06 / PROVIDER-NEUTRAL EXPORT</p><h2 id="artifact-title">speechkit.v1 artifact</h2></div>
+            <p class="section-note">Safe browser export: no API key or local media path.</p>
+          </div>
+          <details><summary>Inspect raw JSON</summary><pre id="raw"></pre></details>
+        </section>
+      </section>
+    </main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
