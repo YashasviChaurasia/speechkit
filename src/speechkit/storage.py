@@ -27,6 +27,11 @@ class Storage:
                 CREATE TABLE IF NOT EXISTS jobs (asset_id TEXT PRIMARY KEY, provider_job_id TEXT, state TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}');
                 CREATE VIRTUAL TABLE IF NOT EXISTS segment_fts USING fts5(segment_id UNINDEXED, asset_id UNINDEXED, text, keywords, entities, topics, speaker_name);
             """)
+            try:
+                db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS segment_trigram USING fts5(segment_id UNINDEXED, asset_id UNINDEXED, text, keywords, entities, speaker_name, tokenize='trigram')")
+                self.trigram_available = True
+            except sqlite3.OperationalError:
+                self.trigram_available = False
 
     def create_asset(self, asset_id: str, filename: str) -> None:
         with self._connect() as db:
@@ -42,11 +47,13 @@ class Storage:
             db.execute("DELETE FROM speakers WHERE asset_id=?", (artifact.asset_id,))
             db.execute("DELETE FROM segments WHERE asset_id=?", (artifact.asset_id,))
             db.execute("DELETE FROM segment_fts WHERE asset_id=?", (artifact.asset_id,))
+            if self.trigram_available: db.execute("DELETE FROM segment_trigram WHERE asset_id=?", (artifact.asset_id,))
             for speaker in artifact.speakers:
                 db.execute("INSERT INTO speakers VALUES (?, ?, ?, ?)", (artifact.asset_id, speaker.speaker_id, speaker.display_name, json.dumps(speaker.__dict__)))
             for segment in artifact.segments:
                 db.execute("INSERT INTO segments VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (segment.segment_id, segment.asset_id, segment.speaker_id, segment.text, segment.start_seconds, segment.end_seconds, json.dumps(segment.keywords), json.dumps(segment.entities), json.dumps(segment.topics)))
                 db.execute("INSERT INTO segment_fts VALUES (?, ?, ?, ?, ?, ?, ?)", (segment.segment_id, segment.asset_id, segment.text, " ".join(segment.keywords), " ".join(segment.entities), " ".join(segment.topics), segment.speaker_name))
+                if self.trigram_available: db.execute("INSERT INTO segment_trigram VALUES (?, ?, ?, ?, ?, ?)", (segment.segment_id, segment.asset_id, segment.text, " ".join(segment.keywords), " ".join(segment.entities), segment.speaker_name))
 
     def get_asset(self, asset_id: str) -> dict | None:
         with self._connect() as db:
@@ -71,11 +78,40 @@ class Storage:
             profile = json.loads(row["profile"]); profile["display_name"] = display_name
             db.execute("UPDATE speakers SET display_name=?, profile=? WHERE asset_id=? AND speaker_id=?", (display_name, json.dumps(profile), asset_id, speaker_id))
             db.execute("DELETE FROM segment_fts WHERE asset_id=? AND segment_id IN (SELECT segment_id FROM segments WHERE asset_id=? AND speaker_id=?)", (asset_id, asset_id, speaker_id))
+            if self.trigram_available: db.execute("DELETE FROM segment_trigram WHERE asset_id=? AND segment_id IN (SELECT segment_id FROM segments WHERE asset_id=? AND speaker_id=?)", (asset_id, asset_id, speaker_id))
             for segment in db.execute("SELECT * FROM segments WHERE asset_id=? AND speaker_id=?", (asset_id, speaker_id)):
                 db.execute("INSERT INTO segment_fts VALUES (?, ?, ?, ?, ?, ?, ?)", (segment["segment_id"], asset_id, segment["text"], segment["keywords"].replace('"', ''), segment["entities"].replace('"', ''), segment["topics"].replace('"', ''), display_name))
+                if self.trigram_available: db.execute("INSERT INTO segment_trigram VALUES (?, ?, ?, ?, ?, ?)", (segment["segment_id"], asset_id, segment["text"], segment["keywords"].replace('"', ''), segment["entities"].replace('"', ''), display_name))
 
-    def search(self, asset_id: str, query: str) -> list[dict]:
+    @staticmethod
+    def _fts_query(query: str, mode: str) -> str:
+        tokens = [token.replace('"', '') for token in query.split() if token]
+        if mode == "phrase": return f'"{" ".join(tokens)}"'
+        if mode == "prefix": return " AND ".join(f'"{token}"*' for token in tokens)
+        return " AND ".join(f'"{token}"' for token in tokens)
+
+    @staticmethod
+    def _matched_fields(row: dict, query: str, mode: str) -> list[str]:
+        needle = query.lower()
+        def matches(value: str) -> bool:
+            words = value.lower().split()
+            return any(word.startswith(needle) for word in words) if mode == "prefix" else needle in value.lower()
+        return [field for field, value in (("text", row["text"]), ("keywords", " ".join(row["keywords"])), ("entities", " ".join(row["entities"])), ("speaker_name", row["speaker_name"])) if matches(value)]
+
+    def search(self, asset_id: str, query: str, mode: str = "smart") -> list[dict]:
+        if mode not in {"smart", "phrase", "prefix", "substring"}: raise ValueError("Unsupported search mode")
         with self._connect() as db:
-            rows = db.execute("""SELECT f.segment_id, f.text, s.speaker_id, s.start_seconds, s.end_seconds, s.keywords, s.entities, bm25(segment_fts) AS score FROM segment_fts f JOIN segments s ON s.segment_id=f.segment_id WHERE f.asset_id=? AND segment_fts MATCH ? ORDER BY score LIMIT 50""", (asset_id, query)).fetchall()
+            if mode == "substring" and not self.trigram_available:
+                rows = db.execute("""SELECT s.segment_id,s.text,s.speaker_id,s.start_seconds,s.end_seconds,s.keywords,s.entities,0.0 AS score FROM segments s JOIN speakers p ON p.asset_id=s.asset_id AND p.speaker_id=s.speaker_id WHERE s.asset_id=? AND lower(s.text || ' ' || s.keywords || ' ' || s.entities || ' ' || p.display_name) LIKE '%' || lower(?) || '%' ORDER BY s.start_seconds LIMIT 50""", (asset_id, query)).fetchall()
+            else:
+                table = "segment_trigram" if mode == "substring" else "segment_fts"
+                expression = query if mode == "substring" else self._fts_query(query, mode)
+                weights = "1.0, 1.3, 1.3, 1.1, 1.1" if table == "segment_fts" else "1.0, 1.3, 1.3, 1.1"
+                rows = db.execute(f"""SELECT f.segment_id, f.text, s.speaker_id, s.start_seconds, s.end_seconds, s.keywords, s.entities, bm25({table}, {weights}) AS score FROM {table} f JOIN segments s ON s.segment_id=f.segment_id WHERE f.asset_id=? AND {table} MATCH ? ORDER BY score LIMIT 50""", (asset_id, expression)).fetchall()
             names = {row["speaker_id"]: row["display_name"] for row in db.execute("SELECT speaker_id, display_name FROM speakers WHERE asset_id=?", (asset_id,))}
-        return [{**dict(row), "speaker_name": names[row["speaker_id"]], "keywords": json.loads(row["keywords"]), "entities": json.loads(row["entities"]), "score": round(float(row["score"]), 4)} for row in rows]
+        results = []
+        for row in rows:
+            result = {**dict(row), "speaker_name": names[row["speaker_id"]], "keywords": json.loads(row["keywords"]), "entities": json.loads(row["entities"]), "score": round(float(row["score"]), 4)}
+            result["matched_fields"] = self._matched_fields(result, query, mode)
+            results.append(result)
+        return results

@@ -1,6 +1,7 @@
 from __future__ import annotations
-import shutil, tempfile
+import shutil, tempfile, time
 from pathlib import Path
+from typing import Literal
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -40,7 +41,9 @@ def media(asset_id:str):
     if not found: raise HTTPException(404,"Media not found")
     return FileResponse(found["metadata"]["media_path"])
 @app.get("/api/assets/{asset_id}/search")
-def search(asset_id:str,q:str=Query(min_length=1)): return {"query":q,"results":store.search(asset_id,q)}
+def search(asset_id:str, q:str=Query(min_length=1), mode:Literal["smart", "phrase", "prefix", "substring"]="smart"):
+    started=time.perf_counter(); results=store.search(asset_id,q,mode)
+    return {"query":q,"mode":mode,"elapsed_ms":round((time.perf_counter()-started)*1000,3),"results":results}
 @app.patch("/api/assets/{asset_id}/speakers/{speaker_id}")
 def rename(asset_id:str,speaker_id:str,body:Rename):
     try: store.rename_speaker(asset_id,speaker_id,body.display_name.strip()); return {"ok":True}
