@@ -19,3 +19,5 @@ $("#upload").onsubmit=async event=>{event.preventDefault();$("#status").textCont
 $("#search").onclick=search; $("#query").onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();search();}};
 document.addEventListener("click",event=>{const renameButton=event.target.closest(".rename"),start=event.target.closest("[data-start]");if(renameButton)rename(renameButton);if(start && !event.target.closest("input"))seek(Number(start.dataset.start));});
 $("#export").onclick=()=>{const anchor=document.createElement("a");anchor.href=URL.createObjectURL(new Blob([JSON.stringify(artifact,null,2)],{type:"application/json"}));anchor.download="speechkit.v1.json";anchor.click();};
+const preloaded = new URLSearchParams(location.search).get("asset");
+if (preloaded) { asset=preloaded; refresh().then(()=>$("#status").textContent="Loaded completed demo").catch(()=>$("#status").textContent="The requested demo asset is unavailable."); }

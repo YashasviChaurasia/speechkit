@@ -17,6 +17,8 @@ set -a; source .env; set +a
 
 Open `http://127.0.0.1:8000`, upload a conversation, optionally set its expected speaker count, then rename/search/export from the completed view. FFmpeg converts the source to mono 16 kHz WAV while the original remains available for browser playback.
 
+See [demo setup](docs/setup.md) for prerequisites, secure local hosting, verification steps, and the opt-in real Sarvam test.
+
 ## Architecture
 
 `sarvam_provider.py` contains all SDK usage. `normalize.py` maps `diarized_transcript.entries` to canonical `SpeechSegment`s; Sarvam chunk timestamps remain under `metadata.sarvam_timestamps`. `storage.py` persists assets, jobs, speakers, segments and an SQLite FTS5 index. No Sarvam SDK object escapes the provider module.
