@@ -4,7 +4,7 @@
 
 - Python 3.11 or newer
 - FFmpeg and ffprobe available on your `PATH`
-- A Sarvam API key with Batch STT credits
+- A Sarvam API key with Batch STT credits for live transcription
 
 ## Install
 
@@ -18,7 +18,7 @@ Edit `.env` and set only your local values:
 ```bash
 SARVAM_API_KEY=your_key_here
 SPEECHKIT_DATA_DIR=./data
-SARVAM_RUN_INTEGRATION_TESTS=0
+SPEECHKIT_FIXTURE_MODE=0
 ```
 
 Then install dependencies:
@@ -36,6 +36,18 @@ set -a; source .env; set +a
 ```
 
 Open `http://127.0.0.1:8000` in a browser on the same machine. This binds only to localhost; do not expose the application publicly without adding access control because uploads consume Sarvam credits.
+
+## Run without Sarvam credentials
+
+Fixture mode is useful for UI reviews and OffCam contract tests. It requires no key, makes no network request, and uses a committed synthetic Batch response instead of real transcription:
+
+```bash
+SPEECHKIT_FIXTURE_MODE=1 \
+SPEECHKIT_DATA_DIR=./data-fixture \
+.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Upload any supported media filename to exercise upload, status, artifact, search, rename, playback, and export. Do not treat fixture output as a transcription result.
 
 ## Verify the flow
 
@@ -56,6 +68,7 @@ Run the real Sarvam test only when you deliberately want to use credits:
 
 ```bash
 SARVAM_RUN_INTEGRATION_TESTS=1 \
+SARVAM_API_KEY=your_sarvam_key \
 SPEECHKIT_INTEGRATION_AUDIO=/absolute/path/to/non-sensitive.wav \
 .venv/bin/python -m pytest -m integration
 ```

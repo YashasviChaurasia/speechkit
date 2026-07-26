@@ -1,62 +1,187 @@
 # SpeechLens
 
-SpeechLens is a standalone demo of searchable, speaker-aware conversations. Upload an audio or video conversation, let Sarvam Batch STT identify the turns, rename speakers, search what was said, and seek the original media to a match. The reusable `speechkit` package exports a provider-neutral `speechkit.v1` artifact for a later OffCam adapter.
+SpeechLens is a standalone, local web demo for analysing a conversation. Upload an audio or video recording, let Sarvam Batch STT diarise it, inspect speaker turns and deterministic speaker intelligence, search what was said, and play from the matching timestamp.
 
-## Run
+The reusable Python package is `speechkit`. It produces a provider-neutral `speechkit.v1` JSON artifact so an application such as OffCam can later integrate the service without importing Sarvam SDK objects.
 
-Requirements: Python 3.11+, FFmpeg and ffprobe on `PATH`, and a Sarvam API key.
+## What it demonstrates
+
+- Audio and video upload with safe filename and size checks.
+- FFprobe inspection and FFmpeg conversion to mono 16 kHz WAV.
+- Sarvam Batch STT using `saaras:v3`, diarisation, and timestamped turns.
+- Speaker metrics: speaking time, turn and word counts, questions, keywords, entities, and representative quotes.
+- SQLite persistence and FTS5 search over transcript text and indexed metadata.
+- Phrase, prefix, substring, and typo-tolerant close-token search.
+- Speaker renaming, native media seeking, and `speechkit.v1` export.
+- A deterministic offline fixture mode for demos and OffCam contract tests.
+
+It is deliberately not a production deployment, streaming client, translation UI, semantic search system, or cross-recording speaker-identification system.
+
+## Quick start: offline fixture mode
+
+Use this mode first. It needs no Sarvam key, makes no network call, and spends no credits. Upload a supported file name; SpeechLens uses committed synthetic Batch output so the rest of the workflow is deterministic.
+
+### 1. Install prerequisites
+
+- Python 3.11 or newer.
+- FFmpeg and ffprobe on `PATH` for live transcription. Fixture mode does not invoke them.
+
+For example:
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Debian/Ubuntu
+sudo apt-get install ffmpeg
+```
+
+### 2. Create and install the environment
+
+Run these commands from the repository root:
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/pip install -e '.[dev]'
+```
+
+### 3. Start SpeechLens
+
+```bash
+SPEECHKIT_FIXTURE_MODE=1 \
+SPEECHKIT_DATA_DIR=./data-fixture \
+.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Open <http://127.0.0.1:8000>. Upload an `.mp3`, `.wav`, `.m4a`, `.mp4`, `.mov`, `.mkv`, or another supported media filename. The completed view lets you rename a speaker, search for `deployment`, click a result, and export the artifact.
+
+Check the service separately from Sarvam:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Expected output:
+
+```json
+{"status":"ok","service":"speechkit","version":"0.1.0"}
+```
+
+## Live Sarvam setup
+
+Live mode requires a Sarvam Batch STT API key and a working FFmpeg installation. Never commit the key, recordings, extracted audio, SQLite database, or downloaded provider output.
+
+### 1. Configure local environment variables
 
 ```bash
 cp .env.example .env
-# Set SARVAM_API_KEY in .env or export it in your shell.
-uv venv --python 3.11 .venv
-uv pip install --python .venv/bin/python -e '.[dev]'
-set -a; source .env; set +a
-.venv/bin/uvicorn app:app --reload
 ```
 
-For deterministic local/OffCam contract testing without a Sarvam key or network access:
+Set local values in `.env`:
 
 ```bash
-SPEECHKIT_FIXTURE_MODE=1 SPEECHKIT_DATA_DIR=./data-fixture \
-  .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+SARVAM_API_KEY=your_sarvam_key
+SPEECHKIT_DATA_DIR=./data
+SPEECHKIT_FIXTURE_MODE=0
 ```
 
-Fixture mode accepts normal supported uploads but uses committed synthetic Batch output. It is not a real transcription mode.
+Load the file and start the service:
 
-Open `http://127.0.0.1:8000`, upload a conversation, optionally set its expected speaker count, then rename/search/export from the completed view. FFmpeg converts the source to mono 16 kHz WAV while the original remains available for browser playback.
+```bash
+set -a; source .env; set +a
+.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+```
 
-SpeechLens rejects empty and unsupported uploads before they reach Sarvam, checks that media has a finite duration and an audio stream, and marks the asset failed when FFmpeg, Batch STT, or transcript normalisation fails. A valid recording with no usable diarised speech is reported as a failed analysis with retry guidance; malformed Sarvam responses are surfaced as controlled provider errors rather than crashing the server.
+The service binds to localhost in these examples. Do not expose it publicly without authentication, upload controls, and an operational data-retention policy: live uploads use Sarvam credits and source media is retained locally.
 
-See [demo setup](docs/setup.md) for prerequisites, secure local hosting, verification steps, and the opt-in real Sarvam test.
+### 2. Use the browser demo
 
-## Architecture
+1. Upload a non-sensitive audio or video conversation containing clear speech.
+2. Optionally supply the expected number of speakers and choose a Sarvam mode.
+3. Wait for the synchronous upload request to complete.
+4. Inspect speaker cards and timestamped transcript turns.
+5. Rename a speaker, search, and click a result or transcript turn to seek the player.
+6. Export `speechkit.v1.json` from the completed panel.
 
-`sarvam_provider.py` contains all SDK usage. `normalize.py` maps `diarized_transcript.entries` to canonical `SpeechSegment`s; Sarvam chunk timestamps remain under `metadata.sarvam_timestamps`. `storage.py` persists assets, jobs, speakers, segments and an SQLite FTS5 index. No Sarvam SDK object escapes the provider module.
+The UI offers these Sarvam Batch modes: `transcribe` (default), `translate`, `verbatim`, `translit`, and `codemix`. SpeechLens always sends `language_code="unknown"`, diarisation, and timestamps. It records the selected mode as `metadata.sarvam_mode`.
 
-The batch call uses `saaras:v3`, `language_code="unknown"`, `with_diarization=True`, and timestamp chunks. The upload UI and API support Sarvam Batch modes `transcribe` (default), `translate`, `verbatim`, `translit` (Roman transliteration), and `codemix`; the selected mode is retained as `metadata.sarvam_mode`. The lifecycle is create job, upload, start, wait, inspect per-file results, download JSON output, then normalise. It has no cancellation, deletion, retry-in-place, idempotency, webhook, streaming, vector search, or paid-provider fallback.
+## Search guide
 
-Sarvam publishes ₹45/hour for STT with diarisation, billed per second. SpeechLens estimates `media_duration / 3600 * 45` INR before metadata is persisted; billing semantics for failed jobs are not documented. Speaker IDs are recording-local labels, not cross-recording identities.
+| UI mode | Example | What it does |
+| --- | --- | --- |
+| Smart | `terraform` | Weighted FTS5 token search, with close-token metadata fallback only when exact results are sparse. |
+| Exact phrase | `customer managed` | FTS5 phrase query. |
+| Prefix | `deploy*` | FTS5 prefix query. |
+| Substring | `ploym` | Trigram FTS5 where supported; parameterised SQLite `LIKE` fallback otherwise. |
+| Closest keyword | `mutatin` | RapidFuzz token similarity over keywords, entities, topics, and speaker names. |
 
-## Search modes
+Closest keyword is typo-tolerant matching, not semantic search. `mutatin` can match `mutating`; `genetic transformation` does not imply `mutating DNA`. No embeddings, synonym expansion, phonetic search, or LLM calls are used.
 
-Standard SQLite FTS5 covers transcript tokens, quoted phrases, prefixes, and indexed keywords, entities, topics, and speaker names. Trigram FTS5 handles arbitrary middle-of-token substring searches. RapidFuzz supplies the `Closest keyword` mode and the Smart-mode fallback: it compares a query only with indexed structured metadata, not every transcript token.
+## API and safe errors
 
-For example, `mutatin` can find the indexed keyword `mutating`. This is fuzzy token similarity, not semantic or conceptual search: `genetic transformation` will not be inferred as `mutating DNA`. Embeddings, synonyms, and semantic similarity are intentionally unsupported.
+The browser uses these endpoints:
+
+```text
+GET    /health
+POST   /api/assets
+GET    /api/assets/{asset_id}
+GET    /api/assets/{asset_id}/status
+GET    /api/assets/{asset_id}/artifact
+GET    /api/assets/{asset_id}/media
+GET    /api/assets/{asset_id}/search?q=&mode=
+PATCH  /api/assets/{asset_id}/speakers/{speaker_id}
+```
+
+All public failures use the same safe envelope. It does not contain API keys, provider headers, tracebacks, absolute local paths, signed URLs, or raw provider exceptions.
+
+```json
+{
+  "error": {
+    "code": "sarvam_rate_limited",
+    "message": "Sarvam is rate limiting transcription requests. Retry in a few minutes.",
+    "retryable": true,
+    "details": {}
+  }
+}
+```
+
+See the generated [OpenAPI schema](docs/offcam-plugin-openapi.json) and [OffCam plugin contract](docs/offcam-plugin-contract.md) for the current executable contract.
 
 ## Tests
 
+Default tests make no network request and require neither a Sarvam key nor FFmpeg:
+
 ```bash
 .venv/bin/python -m pytest -q
-SARVAM_RUN_INTEGRATION_TESTS=1 .venv/bin/python -m pytest -m integration
 ```
 
-The default suite has no network/API-key dependency and uses [`tests/fixtures/sarvam_batch_output.json`](tests/fixtures/sarvam_batch_output.json), a documented Sarvam Batch response shape. The integration marker is reserved for a short real WAV and is intentionally absent until a non-sensitive fixture/key is supplied.
+The real Sarvam test is opt-in and may spend credits. Use only a short, non-sensitive WAV:
+
+```bash
+SARVAM_API_KEY=your_sarvam_key \
+SARVAM_RUN_INTEGRATION_TESTS=1 \
+SPEECHKIT_INTEGRATION_AUDIO=/path/to/non-sensitive.wav \
+.venv/bin/python -m pytest -m integration
+```
+
+## Documentation
+
+- [Setup and verification guide](docs/setup.md)
+- [Implementation guide](docs/implementation-guide.md)
+- [OffCam plugin contract](docs/offcam-plugin-contract.md)
+- [Generated OpenAPI schema](docs/offcam-plugin-openapi.json)
 
 ## `speechkit.v1` output
 
 ```json
-{"schema_version":"speechkit.v1","provider":"sarvam","model":"saaras:v3","speakers":[{"speaker_id":"speaker_0","display_name":"Speaker 0"}],"segments":[{"speaker_id":"speaker_0","start_seconds":0.01,"end_seconds":2.5,"text":"Hello"}]}
+{
+  "schema_version": "speechkit.v1",
+  "provider": "sarvam",
+  "model": "saaras:v3",
+  "speakers": [{"speaker_id": "speaker_0", "display_name": "Speaker 0"}],
+  "segments": [{"speaker_id": "speaker_0", "start_seconds": 0.01, "end_seconds": 2.5, "text": "Hello"}]
+}
 ```
 
-An OffCam integration should depend only on this artifact and the `SpeechSegment`/`SpeechArtifact` models, not this web application or the Sarvam SDK.
+An OffCam integration should consume the artifact and public HTTP contract, rather than import the standalone UI or Sarvam SDK.
