@@ -6,6 +6,10 @@ class ConfigurationError(SpeechKitError):
     pass
 
 
+class CredentialStoreError(SpeechKitError):
+    pass
+
+
 class MediaError(SpeechKitError):
     pass
 
