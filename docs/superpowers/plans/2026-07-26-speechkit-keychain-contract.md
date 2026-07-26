@@ -31,7 +31,7 @@
 - Produces `CredentialStore.get() -> str | None`, `CredentialStore.save(api_key: str) -> None`, and `CredentialStore.remove() -> None`.
 - Produces `CredentialStoreError`, which app maps to a safe public error.
 
-- [ ] **Step 1: Write failing keychain-boundary tests**
+- [x] **Step 1: Write failing keychain-boundary tests**
 
 ```python
 def test_store_reads_saves_and_removes_only_the_sarvam_entry(monkeypatch):
@@ -46,13 +46,13 @@ def test_store_reads_saves_and_removes_only_the_sarvam_entry(monkeypatch):
     assert calls == [("get", "speechkit", "sarvam"), ("set", "speechkit", "sarvam", "new-key"), ("delete", "speechkit", "sarvam")]
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m pytest -q tests/test_credentials.py`
 
 Expected: FAIL because `speechkit.credentials` does not exist.
 
-- [ ] **Step 3: Add the minimal production boundary**
+- [x] **Step 3: Add the minimal production boundary**
 
 ```python
 class CredentialStore:
@@ -65,13 +65,13 @@ class CredentialStore:
 
 Wrap `keyring.errors.KeyringError` and unexpected backend exceptions in `CredentialStoreError`; treat a missing credential during delete as a successful already-removed state. Pin `keyring==25.7.0` in project dependencies.
 
-- [ ] **Step 4: Run the keychain-boundary tests to verify they pass**
+- [x] **Step 4: Run the keychain-boundary tests to verify they pass**
 
 Run: `.venv/bin/python -m pytest -q tests/test_credentials.py`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the keychain boundary**
+- [x] **Step 5: Commit the keychain boundary**
 
 ```bash
 git add pyproject.toml src/speechkit/credentials.py src/speechkit/exceptions.py tests/test_credentials.py
@@ -88,7 +88,7 @@ git commit -m "feat: store Sarvam credentials in keychain"
 - Consumes `CredentialStore` from Task 1.
 - Produces `GET`, `PUT`, and `DELETE /api/provider/config` with `{"provider":"sarvam","configured":bool}` responses.
 
-- [ ] **Step 1: Write failing HTTP-contract tests**
+- [x] **Step 1: Write failing HTTP-contract tests**
 
 ```python
 def test_provider_config_never_returns_the_submitted_key(monkeypatch, tmp_path):
@@ -103,23 +103,23 @@ def test_provider_config_never_returns_the_submitted_key(monkeypatch, tmp_path):
     assert client.delete("/api/provider/config").json() == {"provider": "sarvam", "configured": False}
 ```
 
-- [ ] **Step 2: Run the endpoint test to verify it fails**
+- [x] **Step 2: Run the endpoint test to verify it fails**
 
 Run: `.venv/bin/python -m pytest -q tests/test_offcam_contract.py::test_provider_config_never_returns_the_submitted_key`
 
 Expected: FAIL with `404` because the provider config path does not exist.
 
-- [ ] **Step 3: Add typed config routes and safe keychain failure mapping**
+- [x] **Step 3: Add typed config routes and safe keychain failure mapping**
 
 Add a `ProviderConfiguration` response model and `ProviderKey` request model with a non-blank `api_key`. Map `CredentialStoreError` to `500 credential_store_unavailable` and ensure every success body contains only `provider` and `configured`.
 
-- [ ] **Step 4: Run the endpoint test to verify it passes**
+- [x] **Step 4: Run the endpoint test to verify it passes**
 
 Run: `.venv/bin/python -m pytest -q tests/test_offcam_contract.py::test_provider_config_never_returns_the_submitted_key`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the public contract**
+- [x] **Step 5: Commit the public contract**
 
 ```bash
 git add app.py tests/test_offcam_contract.py
@@ -142,7 +142,7 @@ git commit -m "feat: add SpeechKit provider config contract"
 - Consumes `CredentialStore.get()` and the existing `SarvamProvider(api_key, ...)` constructor.
 - Produces `sarvam_not_configured` for live upload without a stored key and preserves `sarvam_authentication` for a rejected stored key.
 
-- [ ] **Step 1: Write failing live-analysis credential tests**
+- [x] **Step 1: Write failing live-analysis credential tests**
 
 ```python
 def test_live_upload_requires_a_stored_sarvam_key(monkeypatch, tmp_path):
@@ -153,23 +153,23 @@ def test_live_upload_requires_a_stored_sarvam_key(monkeypatch, tmp_path):
     assert response.json()["error"]["code"] == "sarvam_not_configured"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m pytest -q tests/test_offcam_contract.py::test_live_upload_requires_a_stored_sarvam_key`
 
 Expected: FAIL because live startup currently requires `SARVAM_API_KEY` and constructs a provider at import time.
 
-- [ ] **Step 3: Resolve a provider at upload time**
+- [x] **Step 3: Resolve a provider at upload time**
 
 Remove API-key handling from `Settings`. Permit live startup with no configured key. Add an optional provider parameter to `SpeechService.process`; in live upload, obtain the key from `credentials`, return `sarvam_not_configured` when absent, and pass a new `SarvamProvider` to `process`. Fixture mode continues to use `FixtureProvider` and does not read credentials.
 
-- [ ] **Step 4: Run the live-analysis credential test to verify it passes**
+- [x] **Step 4: Run the live-analysis credential test to verify it passes**
 
 Run: `.venv/bin/python -m pytest -q tests/test_offcam_contract.py::test_live_upload_requires_a_stored_sarvam_key`
 
 Expected: PASS.
 
-- [ ] **Step 5: Generate contract documentation and verify the full suite**
+- [x] **Step 5: Generate contract documentation and verify the full suite**
 
 Run:
 
@@ -182,7 +182,7 @@ curl --fail --silent http://127.0.0.1:8013/openapi.json
 
 Document the three endpoints, keychain ownership, no-secret response rule, demo-only privacy boundary, OffCam proxy UI requirements, and configuration-related errors. Regenerate OpenAPI from the running app rather than hand-writing it.
 
-- [ ] **Step 6: Commit the runtime and docs**
+- [x] **Step 6: Commit the runtime and docs**
 
 ```bash
 git add app.py src/speechkit/config.py src/speechkit/service.py .env.example README.md docs/offcam-plugin-contract.md docs/offcam-plugin-openapi.json tests/test_offcam_contract.py
