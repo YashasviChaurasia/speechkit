@@ -29,6 +29,7 @@ def test_intelligence_hero_uses_a_wider_balanced_desktop_measure():
 
     assert ".intro { max-width: 1120px" in css
     assert "font-size: clamp(2.8rem, 4.4vw, 4.9rem)" in css
+    assert "letter-spacing: -.045em" in css
 
 
 def test_ui_script_uses_safe_error_messages_and_rail_navigation_state():
