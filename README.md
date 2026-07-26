@@ -56,6 +56,8 @@ SPEECHKIT_DATA_DIR=./data-fixture \
 
 Open <http://127.0.0.1:8000>. Upload an `.mp3`, `.wav`, `.m4a`, `.mp4`, `.mov`, `.mkv`, or another supported media filename. The completed view lets you rename a speaker, search for `deployment`, click a result, and export the artifact.
 
+The browser opens an editorial workspace with a left navigation rail for Upload, Overview, Speakers, Search, Transcript, and Artifact; it is the same workflow used for live Sarvam analysis.
+
 Check the service separately from Sarvam:
 
 ```bash
